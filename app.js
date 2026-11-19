@@ -197,13 +197,15 @@
   function hitTarget(ids, ty, cap) { const w = edge(ids, (m) => mixRate(m) >= ty - 1e-9, 60); return w && mixLoss(w) <= cap + 1e-9 ? w : null; }
   const reachable = (savings, target) => !!hitTarget(ADV_ALL, reqRate(savings, target), RISK_CAP);
   /* يحاول دائمًا يوصل للمبلغ المستهدف بالكامل. why: profile = أنواع وصف المخاطر لا تكفي، cap = حد 10% يمنع، max = حتى بدون حد ما يكفي */
+  // أفضل خطة: بعد ما نلقى أقل مخاطرة توصل للهدف، نأخذ أعلى دخل ممكن بنفس مستوى المخاطر (يوصل للهدف أو يتفوق عليه)
+  function polish(pool, w) { const best = edge(pool, (m) => mixLoss(m) <= mixLoss(w) + 1e-9, 0); return best && mixRate(best) > mixRate(w) + 1e-9 ? best : w; }
   function advise(savings, target, riskKey, over) {
-    const ty = reqRate(savings, target), ids = (RISK[riskKey] || RISK.mid).types;
+    const ty = reqRate(savings, target), ids = (RISK[riskKey] || RISK.mid).types, pool = over ? ADV_ALL : ids;
     const w = over ? (hitTarget(ADV_ALL, ty, RISK_CAP) || hitTarget(ADV_ALL, ty, 100)) : hitTarget(ids, ty, RISK_CAP);
-    if (w) return { mix: cleanMix(w), ok: true, why: null };
-    const pool = over ? ADV_ALL : ids, cap = over ? 100 : RISK_CAP;
+    if (w) return { mix: cleanMix(polish(pool, w)), ok: true, why: null };
+    const cap = over ? 100 : RISK_CAP;
     const best = edge(pool, (m) => mixLoss(m) <= cap + 1e-9, 0) || greedy(pool, 60);
-    return { mix: cleanMix(best), ok: false, why: over ? 'max' : hitTarget(ADV_ALL, ty, RISK_CAP) ? 'profile' : 'cap' };
+    return { mix: cleanMix(polish(pool, best)), ok: false, why: over ? 'max' : hitTarget(ADV_ALL, ty, RISK_CAP) ? 'profile' : 'cap' };
   }
 
   /* ================= الحالة ================= */
@@ -211,6 +213,12 @@
   const defaultState = () => ({ v: 1, user: null, passcode: null, plan: null, portfolios: [], history: [], sukuk: [], mixDraft: null, simOffset: 0, auto: null, events: {}, draft: null, reg: null, calc: { pf: 'div-safe', init: 20000, monthly: 1500, year: 15, saveYear: 1, period: 'all' } });
   let S = load();
   if (S.plan) S.plan.payDay = PAY_DAY;
+  // ترقية خطط المستشار الآلي القديمة إلى أعلى دخل بنفس مستوى مخاطرها
+  if (S.plan && S.plan.mode === 'auto' && S.plan.mix) {
+    const types = (RISK[S.plan.risk] || {}).types || ADV_ALL;
+    const pool = Object.keys(S.plan.mix).every((id) => types.includes(id)) ? types : ADV_ALL;
+    if (Object.keys(S.plan.mix).every((id) => ADV[id])) S.plan.mix = cleanMix(polish(pool, S.plan.mix));
+  }
   let unlocked = false;
   let REINV = false; // عرض أثر إعادة استثمار التوزيعات في الرسوم الخطية
   function load() {
@@ -261,24 +269,51 @@
   const ageBand = (a) => AGE_BANDS.find(([lo, hi]) => a >= lo && a <= hi) || AGE_BANDS[2];
   const fmtShort = (n) => (Math.abs(n) >= 1e6 ? fmt(n / 1e6, Math.abs(n) >= 1e7 ? 0 : 1) + ' مليون' : Math.abs(n) >= 1e3 ? fmt(n / 1e3, 0) + ' ألف' : fmt(n, 0));
 
-  /* ===== رسم خطي عام: الزمن من اليسار لليمين، والقيم على المحور الرأسي ===== */
+  /* ===== رسم خطي عام وتفاعلي: الزمن من اليسار لليمين، والقيم على المحور الرأسي =====
+     المس الرسم أو مرّر المؤشر عليه: يظهر خط عمودي ونقطة على كل خط، وفقاعة فيها الوقت والمبلغ عند هذي النقطة. */
+  const LC = {}; let lcSeq = 0;
+  const yearName = (i) => (i === 0 ? 'الآن' : `بعد ${i} ${i === 1 ? 'سنة' : i <= 10 ? 'سنوات' : 'سنة'}`);
+  const pctFmt = (v) => `${v >= 100 ? '+' : ''}${fmt(v - 100, 1)}%`;
   function lineChart(series, xt, o = {}) {
-    const W = 360, H = o.h || 210, L = 58, R = 24, T = 14, B = 28;
+    const W = 360, H = o.h || 230, L = 60, R = 26, T = 16, B = 30;
     const all = series.flatMap((s) => s.pts);
     let mn = o.min != null ? o.min : Math.min(...all), mx = Math.max(...all);
-    if (o.min == null) { const pad = (mx - mn) * 0.08 || 1; mn -= pad; mx += pad; } else mx = mx <= mn ? mn + 1 : mx + (mx - mn) * 0.05;
-    const n = series[0].pts.length, yf = o.yFmt || fmtShort;
+    if (o.min == null) { const pad = (mx - mn) * 0.08 || 1; mn -= pad; mx += pad; } else mx = mx <= mn ? mn + 1 : mx + (mx - mn) * 0.06;
+    const n = series[0].pts.length, yf = o.yFmt || fmtShort, id = 'lc' + (++lcSeq);
     const X = (i) => L + i / (n - 1) * (W - L - R), Y = (v) => T + (1 - (v - mn) / (mx - mn)) * (H - T - B);
-    const grid = [0, 1, 2, 3].map((k) => { const v = mn + (mx - mn) * k / 3, y = Y(v).toFixed(1); return `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="#DCE3EE"/><text x="${L / 2}" y="${(+y + 4).toFixed(1)}" text-anchor="middle" font-size="11" fill="#6B7383">${yf(v)}</text>`; }).join('');
-    const xl = xt.map(([i, l]) => `<text x="${X(i).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="11" fill="#6B7383">${l}</text>`).join('');
-    const axes = `<line x1="${L}" x2="${L}" y1="${T}" y2="${H - B}" stroke="#B8C2D3"/><line x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}" stroke="#B8C2D3"/>`;
+    const ltr = o.ltr ? ' direction="ltr" unicode-bidi="embed"' : '';
+    const grid = [0, 1, 2, 3, 4].map((k) => { const v = mn + (mx - mn) * k / 4, y = Y(v).toFixed(1); return `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="#E3E8F1" ${k ? 'stroke-dasharray="3 4"' : ''}/><text x="${L / 2}" y="${(+y + 4).toFixed(1)}" text-anchor="middle" font-size="11.5" font-weight="600" fill="#5B6375"${ltr}>${yf(v)}</text>`; }).join('');
+    const xl = xt.map(([i, l]) => `<line x1="${X(i).toFixed(1)}" x2="${X(i).toFixed(1)}" y1="${H - B}" y2="${H - B + 5}" stroke="#B8C2D3"/><text x="${X(i).toFixed(1)}" y="${H - 9}" text-anchor="middle" font-size="11.5" font-weight="600" fill="#5B6375">${l}</text>`).join('');
+    const axes = `<line x1="${L}" x2="${L}" y1="${T}" y2="${H - B}" stroke="#B8C2D3" stroke-width="1.5"/><line x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}" stroke="#B8C2D3" stroke-width="1.5"/>`;
+    const path = (s) => s.pts.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join('');
+    const main = series.find((s) => !s.dash && s.fill !== false) || series[series.length - 1];
+    const area = `<defs><linearGradient id="${id}-g" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${main.color}" stop-opacity=".18"/><stop offset="1" stop-color="${main.color}" stop-opacity="0"/></linearGradient></defs><path d="${path(main)}L${X(n - 1).toFixed(1)} ${H - B}L${L} ${H - B}Z" fill="url(#${id}-g)"/>`;
     const lines = series.map((s) => {
-      const d = s.pts.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(''), li = s.pts.length - 1;
-      return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.dash ? 2.5 : 3.5}"${s.dash ? ' stroke-dasharray="6 5"' : ''} stroke-linecap="round" stroke-linejoin="round"/><circle cx="${X(li).toFixed(1)}" cy="${Y(s.pts[li]).toFixed(1)}" r="4.5" fill="#fff" stroke="${s.color}" stroke-width="2.5"/>`;
+      const li = s.pts.length - 1;
+      return `<path d="${path(s)}" fill="none" stroke="${s.color}" stroke-width="${s.dash ? 2.8 : 3.8}"${s.dash ? ' stroke-dasharray="7 5"' : ''} stroke-linecap="round" stroke-linejoin="round"/><circle cx="${X(li).toFixed(1)}" cy="${Y(s.pts[li]).toFixed(1)}" r="4.5" fill="#fff" stroke="${s.color}" stroke-width="2.5"/>`;
     }).join('');
+    const hover = `<g class="lc-hv" visibility="hidden"><line y1="${T}" y2="${H - B}" stroke="#1B1E24" stroke-width="1.5" stroke-dasharray="4 3"/>${series.map((s) => `<circle r="6.5" fill="${s.color}" stroke="#fff" stroke-width="3"/>`).join('')}</g>`;
     const legend = series.slice().reverse().map((s) => `<span><i class="${s.dash ? 'dash' : ''}" style="${s.dash ? `border-color:${s.color}` : `background:${s.color}`}"></i>${s.label}</span>`).join('');
-    return `<svg class="lc" viewBox="0 0 ${W} ${H}" role="img" aria-label="${o.label || 'رسم بياني خطي'}">${grid}${axes}${xl}${lines}</svg><div class="lc-legend">${legend}</div>`;
+    LC[id] = { series, n, W, X, Y, xName: o.xName || yearName, tip: o.tip || ((v) => money(v, 0)) };
+    return `<div class="lc-wrap" data-lc="${id}"><svg class="lc" viewBox="0 0 ${W} ${H}" role="img" aria-label="${o.label || 'رسم بياني خطي'}">${grid}${area}${axes}${xl}${lines}${hover}</svg><div class="lc-tip" hidden></div></div><div class="lc-legend">${legend}</div>${o.hint === false ? '' : `<p class="lc-hint">${ic('hand')} المس الرسم أو مرّر المؤشر عليه عشان تشوف المبلغ عند أي نقطة</p>`}`;
   }
+  function lcShow(wrap, clientX) {
+    const c = LC[wrap.dataset.lc]; if (!c) return;
+    const svg = wrap.querySelector('svg'), r = svg.getBoundingClientRect(); if (!r.width) return;
+    const sx = (clientX - r.left) / r.width * c.W;
+    const i = clamp(Math.round((sx - c.X(0)) / (c.X(c.n - 1) - c.X(0)) * (c.n - 1)), 0, c.n - 1), x = c.X(i);
+    const g = svg.querySelector('.lc-hv'), ln = g.querySelector('line'), dots = g.querySelectorAll('circle');
+    g.setAttribute('visibility', 'visible'); ln.setAttribute('x1', x); ln.setAttribute('x2', x);
+    c.series.forEach((s, k) => { dots[k].setAttribute('cx', x); dots[k].setAttribute('cy', c.Y(s.pts[i])); });
+    const tip = wrap.querySelector('.lc-tip');
+    tip.innerHTML = `<b>${c.xName(i)}</b>${c.series.slice().reverse().map((s) => `<span><i style="background:${s.color}"></i>${s.short || s.label}<em>${c.tip(s.pts[i])}</em></span>`).join('')}`;
+    tip.hidden = false;
+    const px = x / c.W * r.width, left = px > r.width / 2;
+    tip.style.left = px + 'px'; tip.style.transform = left ? 'translateX(calc(-100% - 12px))' : 'translateX(12px)';
+  }
+  const lcHide = (wrap) => { const g = wrap.querySelector('.lc-hv'); if (g) g.setAttribute('visibility', 'hidden'); const t = wrap.querySelector('.lc-tip'); if (t) t.hidden = true; };
+  ['pointerdown', 'pointermove'].forEach((ev) => document.addEventListener(ev, (e) => { const w = e.target.closest && e.target.closest('.lc-wrap'); if (w) lcShow(w, e.clientX); }));
+  document.addEventListener('pointerout', (e) => { const w = e.target.closest && e.target.closest('.lc-wrap'); if (w && e.pointerType === 'mouse' && !w.contains(e.relatedTarget)) lcHide(w); });
   const weightsHTML = (mix) => `<div class="weights"><span class="wl">الأوزان:</span>${MIX_ORDER.filter((id) => mix[id] > 0).map((id) => `<span><i style="background:${PORTS[id].hex}"></i>${PORTS[id].name} <b>${mix[id]}%</b></span>`).join('')}</div>`;
   // توقع 15 سنة: الدخل يُصرف شهريًا (القيمة ثابتة + الاستقطاع) مقابل إعادة استثمار الدخل بالكامل
   function project(P, Y, monthly, years = 15) {
@@ -295,8 +330,8 @@
     const pr = project(P, mixRate(mix) / 100, monthly), e = 15;
     const xt = [[0, 'الآن'], [5, '5 سنوات'], [10, '10 سنوات'], [15, '15 سنة']];
     const chart = REINV
-      ? lineChart([{ pts: pr.tot, color: '#9AA3B2', dash: true, label: 'بدون إعادة استثمار (القيمة + الدخل المستلم)' }, { pts: pr.re, color: '#3A47E6', label: 'مع إعادة استثمار التوزيعات' }], xt, { min: 0, label: 'أثر إعادة استثمار التوزيعات خلال 15 سنة' })
-      : lineChart([{ pts: pr.inc, color: '#13A57A', label: 'الدخل المستلم التراكمي' }, { pts: pr.val, color: '#3A47E6', label: 'قيمة محفظتك' }], xt, { min: 0, label: 'قيمة الاستثمار خلال 15 سنة' });
+      ? lineChart([{ pts: pr.tot, color: '#8A93A6', dash: true, label: 'بدون إعادة استثمار (القيمة + الدخل المستلم)', short: 'بدون إعادة استثمار' }, { pts: pr.re, color: '#3A47E6', label: 'مع إعادة استثمار التوزيعات', short: 'مع إعادة الاستثمار' }], xt, { min: 0, label: 'أثر إعادة استثمار التوزيعات خلال 15 سنة' })
+      : lineChart([{ pts: pr.inc, color: '#13A57A', label: 'الدخل المستلم التراكمي', short: 'الدخل المستلم', fill: false }, { pts: pr.val, color: '#3A47E6', label: 'قيمة محفظتك', short: 'قيمة محفظتك' }], xt, { min: 0, label: 'قيمة الاستثمار خلال 15 سنة' });
     const note = REINV
       ? `بعد 15 سنة: ${money(pr.re[e], 0)} مع إعادة الاستثمار، مقابل ${money(pr.tot[e], 0)} بدونها (فرق ${money(pr.re[e] - pr.tot[e], 0)}). مع إعادة الاستثمار ما تستلم دخل شهري خلال الفترة.`
       : `خلال 15 سنة تستلم دخل إجمالي ${money(pr.inc[e], 0)} تقريبًا، وتبقى قيمة محفظتك ${money(pr.val[e], 0)}${monthly ? ' مع الاستقطاع الشهري' : ''}.`;
@@ -637,7 +672,7 @@
   function nextQ(i) {
     const d = draft(); let n = i + 1;
     while (n < QS.length && QS[n].skip && QS[n].skip(d)) n += 1;
-    if (n >= QS.length) d.over = false;
+    if (n >= QS.length) { d.over = false; d.closest = false; }
     save();
     go(n >= QS.length ? '/income/result' : `/income/q/${n + 1}`);
   }
@@ -674,7 +709,7 @@
         d[key] = v; amt.innerHTML = q.unit ? numUnit(v, q.unit) : money(v, 0);
         root.querySelectorAll('[data-chip]').forEach((c) => c.classList.toggle('on', +c.dataset.chip === v));
         // الرسالة تظهر فقط إذا ما فيه أي توزيع بحد مخاطر 10% يوصل للمبلغ خلال 12 شهر
-        if (hint) { const ok = reachable(d.savings, v); hint.hidden = ok; hint.textContent = ok ? '' : 'لكي تصل للمبلغ المستهدف يجب زيادة المبلغ أو زيادة المخاطر بعد الموافقة'; }
+        if (hint) { const ok = reachable(d.savings, v); hint.hidden = ok; hint.textContent = ok ? '' : `عزيزي العميل، لكي تصل للمبلغ المستهدف يجب زيادة المبلغ المستثمر أو زيادة نسبة المخاطر لفوق ${RISK_CAP}%`; }
         save();
       };
       rng.addEventListener('input', () => upd(+rng.value));
@@ -721,14 +756,16 @@
       let alert = '';
       if (!A.ok && A.why === 'max') {
         alert = `<div class="big-warn">${ic('alert')}<div><p>حتى مع تقبّل مخاطر أعلى، أقصى دخل نقدر نوصله ${money(inc, 0)} شهريًا.</p><p class="sm">لتحقيق هدفك (${money(d.target, 0)}) زِد مبلغ الاستثمار إلى ${money(need, 0)} تقريبًا.</p><div class="btns"><button class="btn soft" data-action="backToCap">ارجع لحد المخاطر ${RISK_CAP}%</button></div></div></div>`;
+      } else if (!A.ok && d.closest) {
+        alert = '';
       } else if (!A.ok) {
         const why = A.why === 'profile' ? `أنواع الاستثمار المناسبة لوصفك (${RISK[d.risk].name}) ما توصل للدخل المستهدف ضمن حد المخاطر ${RISK_CAP}%.` : `بسبب حد المخاطر ${RISK_CAP}% لم نستطع الوصول للدخل المستهدف.`;
-        alert = `<div class="big-warn">${ic('alert')}<div><p>${why} يجب تقبّل مخاطر أعلى، أو تقبّل أقرب دخل للمطلوب: ${money(inc, 0)} شهريًا.</p><div class="btns"><button class="btn" data-action="acceptOver">تقبّل مخاطر أعلى</button><button class="btn soft" data-action="approvePlan">تقبّل الدخل الأقرب</button></div></div></div>`;
+        alert = `<div class="big-warn">${ic('alert')}<div><p>${why} يجب تقبّل مخاطر أعلى، أو تقبّل أقرب دخل للمطلوب: ${money(inc, 0)} شهريًا.</p><div class="btns"><button class="btn" data-action="acceptOver">تقبّل مخاطر أعلى</button><button class="btn soft" data-action="acceptClosest">تقبّل الدخل الأقرب</button></div></div></div>`;
       } else if (d.over) {
         alert = `<div class="warn">${ic('alert')}<span>هذي الخطة فيها أنواع استثمار مخاطرها أعلى من وصفك، ومخاطر رأس المال ${fmt(L, 1)}% خلال 12 شهر${L > RISK_CAP ? ` (فوق حد ${RISK_CAP}%)` : ''}${needsAck(mix) ? '، وبنطلب منك توقيع إقرار المخاطر' : ''}. <button class="link" data-action="backToCap">ارجع للخطة ضمن حدودك</button></span></div>`;
       }
       return `${topbar('خطتك جاهزة', '', '/income')}
-        <div class="res-head"><small>دخلك الشهري المتوقع</small><b>${money(inc)}</b><small>${A.ok ? 'يغطي هدفك بالكامل' : `من هدف ${money(d.target, 0)}`}</small></div>
+        <div class="res-head"><small>دخلك الشهري المتوقع</small><b>${money(inc)}</b><small>${A.ok ? (inc > d.target + 0.5 ? `أعلى من هدفك (${money(d.target, 0)})` : 'يغطي هدفك بالكامل') : d.closest ? `أقرب دخل لهدفك (${money(d.target, 0)})` : `من هدف ${money(d.target, 0)}`}</small></div>
         ${alert}
         <div class="card mt16"><div class="chart-head"><b>قيمة استثمارك خلال 15 سنة</b>${reinvToggle('reinv')}</div><div id="proj" class="mt12">${projHTML(d.savings, mix, monthly)}</div></div>
         <div class="card">
@@ -755,8 +792,10 @@
     const t = root.querySelector(sel); if (!t) return;
     t.addEventListener('change', () => { REINV = t.checked; track('reinvest_toggle'); repaint(); });
   }
-  ACTIONS.acceptOver = () => { draft().over = true; track('accept_over'); save(); render(); };
-  ACTIONS.backToCap = () => { draft().over = false; save(); render(); };
+  ACTIONS.acceptOver = () => { const d = draft(); d.over = true; d.closest = false; track('accept_over'); save(); render(); };
+  // قبول أقرب دخل: نشيل التنبيه ونبقى في نفس الشاشة
+  ACTIONS.acceptClosest = () => { draft().closest = true; track('accept_closest'); save(); render(); toast('تم اعتماد أقرب دخل لهدفك'); };
+  ACTIONS.backToCap = () => { const d = draft(); d.over = false; d.closest = false; save(); render(); };
   function createPlan(extra, ack) {
     const d = draft();
     S.plan = Object.assign({ age: d.age || 62, pension: d.pension || 0, savings: d.savings, target: d.target, risk: d.risk, payDay: PAY_DAY, dest: 'bank', paused: false, ack: !!ack, ackDate: ack ? new Date().toISOString() : null, balance: d.savings, funded: false, payLater: false, createdAt: new Date().toISOString() }, extra);
@@ -903,9 +942,10 @@
       out.push({ ic: 'target', t: 'دخلك المتوقع أقل من هدفك', d: `ينقصك ${money(p.target - inc, 0)} شهريًا. أضف ${money(need, 0)} تقريبًا لخطتك، أو تقبّل مخاطر أعلى.`, l: 'إضافة مبلغ', a: 'data-go="/deposit/sanad"' });
     }
     if (L > RISK_CAP) out.push({ ic: 'alert', t: 'مخاطر محفظتك أعلى من الحد', d: `أقصى انخفاض متوقع ${fmt(L, 1)}% خلال 12 شهر، والحد الموصى ${RISK_CAP}%. خفّف أوزان المحافظ عالية المخاطر.`, l: 'تعديل الأوزان', a: 'data-action="editMix"' });
-    BEST_MIX = edge(ADV_ALL, (m) => mixLoss(m) <= Math.max(L, 0.5) + 1e-9, 0);
-    if (BEST_MIX && mixRate(BEST_MIX) - mixRate(mix) > 0.1) {
-      out.push({ ic: 'trend', t: 'دخل أعلى بنفس المخاطر', d: `بتوزيع مختلف تقدر ترفع دخلك إلى ${money(bal * mixRate(BEST_MIX) / 100 / 12, 0)} شهريًا بدون ما تزيد مخاطرك (${fmt(L, 1)}%).`, l: 'شوف التوزيع المقترح', a: 'data-action="tryBest"' });
+    // خطة المستشار الآلي هي أصلًا أعلى دخل لمستوى مخاطرها، فالاقتراح هذا فقط للخطط اللي صممها العميل بنفسه
+    BEST_MIX = (p.mode || 'preset') !== 'auto' ? edge(ADV_ALL, (m) => mixLoss(m) <= Math.max(L, 0.5) + 1e-9, 0) : null;
+    if (BEST_MIX && mixRate(BEST_MIX) - mixRate(mix) > 0.25) {
+      out.push({ ic: 'trend', t: 'المستشار الآلي يقدر يرفع دخلك', d: `توزيعك الحالي ما يستغل مستوى مخاطرك (${fmt(L, 1)}%). المستشار الآلي يوصلك إلى ${money(bal * mixRate(BEST_MIX) / 100 / 12, 0)} شهريًا بنفس المخاطر.`, l: 'شوف خطة المستشار', a: 'data-action="tryBest"' });
     }
     if ((mix.saving || 0) < 10) out.push({ ic: 'wallet', t: 'ارفع السيولة للطوارئ', d: 'نوصي إن 10% على الأقل من خطتك تكون في الادخار عشان تغطي أي مصروف مفاجئ بدون ما تبيع وقت النزول.', l: 'تعديل الأوزان', a: 'data-action="editMix"' });
     if (!auto) {
@@ -932,7 +972,7 @@
     const pct = (v) => `<span dir="ltr">${v >= 0 ? '+' : ''}${fmt(v, 1)}%</span>`;
     return `<h3 class="h3 mt24">مقارنتك مع المشابهين لك</h3>
       <div class="card"><div class="peer-tags"><span class="tag">العمر ${ab[2]}${p.age ? '' : ' (تقديري)'}</span><span class="tag">المبلغ ${amt}</span><span class="tag">مخاطر ${RISK[band].name}</span></div>
-        <div class="mt12">${lineChart([{ pts: pe, color: '#9AA3B2', dash: true, label: 'متوسط المشابهين لك (البنش مارك)' }, { pts: me, color: '#3A47E6', label: 'محفظتك' }], [[0, 'قبل سنة'], [6, 'قبل 6 أشهر'], [12, 'الآن']], { yFmt: (v) => `${v >= 100 ? '+' : ''}${fmt(v - 100, 1)}%`, label: 'أداء محفظتك مقابل المشابهين', h: 190 })}</div>
+        <div class="mt12">${lineChart([{ pts: pe, color: '#8A93A6', dash: true, label: 'متوسط المشابهين لك (البنش مارك)', short: 'المشابهين لك' }, { pts: me, color: '#3A47E6', label: 'محفظتك', short: 'محفظتك' }], [[0, 'قبل سنة'], [6, 'قبل 6 أشهر'], [12, 'الآن']], { yFmt: pctFmt, ltr: true, tip: (v) => `<span dir="ltr">${pctFmt(v)}</span>`, xName: (i) => (i === 12 ? 'الآن' : `قبل ${12 - i} ${12 - i === 1 ? 'شهر' : 12 - i <= 10 ? 'أشهر' : 'شهر'}`), label: 'أداء محفظتك مقابل المشابهين', h: 210 })}</div>
         <div class="row between mt12"><span class="small">محفظتك</span><b class="${r1 >= 0 ? 'pos' : 'neg'}">${pct(r1)}</b></div>
         <div class="row between mt8"><span class="small">متوسط المشابهين</span><b>${pct(r2)}</b></div>
         <p class="small mt8">${diff >= 0 ? `محفظتك أفضل من متوسط المشابهين لك بـ ${fmt(diff, 1)}% خلال آخر 12 شهر.` : `محفظتك أقل من متوسط المشابهين لك بـ ${fmt(Math.abs(diff), 1)}% خلال آخر 12 شهر. شوف الاقتراحات فوق.`} أرقام توضيحية.</p></div>`;
@@ -1190,13 +1230,14 @@
     return (seriesCache[id] = v);
   }
   const maxDD = (v) => { let pk = v[0], dd = 0; v.forEach((x) => { pk = Math.max(pk, x); dd = Math.min(dd, x / pk - 1); }); return dd * 100; };
+  // الأداء التاريخي كرسم خطي تفاعلي: المس أي نقطة يظهر لك العائد من بداية الفترة لين هذي النقطة
   function sparkSVG(v) {
-    const step = Math.max(1, Math.floor(v.length / 140)), pts = v.filter((_, i) => i % step === 0 || i === v.length - 1);
-    const W = 360, H = 170, mn = Math.min(...pts), mx = Math.max(...pts), rgY = mx - mn || 1;
-    const xy = pts.map((y, i) => [i / (pts.length - 1) * W, H - 10 - (y - mn) / rgY * (H - 30)]);
-    const d = xy.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join('');
-    const [lx, ly] = xy[xy.length - 1];
-    return `<svg viewBox="0 0 ${W} ${H}" aria-hidden="true"><defs><linearGradient id="sg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#3A47E6" stop-opacity=".16"/><stop offset="1" stop-color="#3A47E6" stop-opacity="0"/></linearGradient></defs><path d="${d}L${W} ${H}L0 ${H}Z" fill="url(#sg)"/><path d="${d}" fill="none" stroke="#3A47E6" stroke-width="2.6" stroke-linejoin="round"/><circle cx="${lx}" cy="${ly}" r="6" fill="#fff" stroke="#3A47E6" stroke-width="3"/></svg>`;
+    const step = Math.max(1, Math.floor(v.length / 120)), idx = [];
+    for (let i = 0; i < v.length; i += step) idx.push(i);
+    if (idx[idx.length - 1] !== v.length - 1) idx.push(v.length - 1);
+    const pts = idx.map((i) => v[i] / v[0] * 100), last = pts.length - 1;
+    const ago = (k) => { const d = v.length - 1 - idx[k]; return d === 0 ? 'الآن' : d < 21 ? `قبل ${d} يوم تداول` : d < 252 ? `قبل ${Math.round(d / 21)} شهر تقريبًا` : `قبل ${fmt(d / 252, 1)} سنة تقريبًا`; };
+    return lineChart([{ pts, color: '#3A47E6', label: 'العائد من بداية الفترة', short: 'العائد' }], [[0, 'بداية الفترة'], [last, 'الآن']], { yFmt: pctFmt, ltr: true, tip: (x) => `<span dir="ltr">${pctFmt(x)}</span>`, xName: ago, label: 'الأداء التاريخي', h: 200 });
   }
   const PERIODS = [['month', 'شهر', 21], ['6m', '6 اشهر', 126], ['year', 'سنة', 252], ['all', 'الكل', 1260]];
   function histCard(id, name, rate, vol) {
@@ -1287,6 +1328,7 @@
           $('#c-svg').innerHTML = `<svg viewBox="0 0 ${W} ${H}" aria-label="منحنى نمو الاستثمار"><defs><linearGradient id="cg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#3A47E6" stop-opacity=".2"/><stop offset="1" stop-color="#3A47E6" stop-opacity=".02"/></linearGradient></defs><path d="${line(pts)}L${W} ${H}L0 ${H}Z" fill="url(#cg)"/><line x1="${xm}" x2="${xm}" y1="0" y2="${H}" stroke="#9FB0F5" stroke-width="2"/><path d="${line(base)}" fill="none" stroke="#1B1E24" stroke-width="3.5" stroke-linecap="round"/>${REINV ? `<path d="${line(alt)}" fill="none" stroke="#13A57A" stroke-width="3" stroke-dasharray="7 6" stroke-linecap="round"/>` : ''}<path d="${line(pts)}" fill="none" stroke="#3A47E6" stroke-width="4.5" stroke-linecap="round"/></svg>`;
           $('#c-legend').innerHTML = `<span><i style="background:#3A47E6"></i>${REINV ? 'مع إعادة استثمار التوزيعات' : 'بدون إعادة استثمار التوزيعات'}</span>${REINV ? '<span><i class="dash" style="border-color:#13A57A"></i>بدون إعادة الاستثمار</span>' : ''}<span><i style="background:#1B1E24"></i>المبلغ المدفوع فقط</span>`;
           const a = fv(C.init, C.monthly, rMain, yr * 12), b = C.init + C.monthly * yr * 12, g = a - b, aNo = fv(C.init, C.monthly, gNo, yr * 12);
+          $('#c-svg svg').insertAdjacentHTML('beforeend', `<circle cx="${xm}" cy="${Y(b).toFixed(1)}" r="7" fill="#1B1E24" stroke="#fff" stroke-width="3"/><circle cx="${xm}" cy="${Y(a).toFixed(1)}" r="8" fill="#3A47E6" stroke="#fff" stroke-width="3"/>`);
           $('#c-note').innerHTML = REINV ? `إعادة استثمار التوزيعات تضيف ${money(a - aNo, 0)} لقيمة استثمارك بعد ${yr} ${yr <= 10 ? 'سنوات' : 'سنة'}.` : `بدون إعادة الاستثمار تُصرف لك توزيعات إجمالها ${money(paid(yr * 12), 0)} تقريبًا خلال ${yr} ${yr <= 10 ? 'سنوات' : 'سنة'}. فعّل الخيار عشان تشوف أثر إعادة استثمارها.`;
           $('#c-val').innerHTML = money(a); $('#c-gain').innerHTML = `<span>▲ (${fmt(b ? g / b * 100 : 0, 1)}%)</span>${money(g)}`;
           $('#t-yr').textContent = yr === 1 ? 'بعد سنة' : `بعد ${yr} ${yr <= 10 ? 'سنوات' : 'سنة'}`;
