@@ -478,6 +478,9 @@ input[type=range]::-moz-range-thumb { width: 26px; height: 26px; border-radius: 
 .stepper .w { min-width: 46px; text-align: center; font-weight: 700; direction: ltr; }
 .badge-warn { white-space: nowrap; background: #FFF1DE; color: #9A5B00; font-size: 11px; font-weight: 600; border-radius: 99px; padding: 2px 8px; vertical-align: middle; }
 
+/* ===== سؤال العمر ===== */
+.num-unit span { font-size: .55em; font-weight: 600; color: var(--muted); }
+
 /* ===== تخطي الخطوات ===== */
 .skip { color: var(--primary); font-weight: 600; font-size: 15px; padding: 6px 16px; border-radius: 99px; background: var(--soft); }
 

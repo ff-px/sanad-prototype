@@ -255,6 +255,10 @@
   const planMix = (p) => ((p.mode || 'preset') === 'preset' ? presetToMix(p.alloc) : p.mix || {});
   const needsAck = (mix) => highShare({ mode: 'custom', mix }) > 0 || mixLoss(mix) > RISK_CAP + 1e-9;
   const modeBadge = (p) => { const m = p.mode || 'preset'; return m === 'custom' ? 'من تصميمك' : m === 'auto' ? 'المستشار الآلي' : 'خطة مقترحة'; };
+  const numUnit = (v, unit) => `<span class="num-unit"><b>${fmt(v)}</b> <span>${unit}</span></span>`;
+  // فئات العمر للمقارنة مع المشابهين، ومعها تعديل بسيط لعائد المشابهين (الأصغر سنًا يتحمل نمو أعلى)
+  const AGE_BANDS = [[0, 54, 'أقل من 55', 0.4], [55, 59, '55–59', 0.2], [60, 64, '60–64', 0], [65, 69, '65–69', -0.2], [70, 200, '70 فأكثر', -0.4]];
+  const ageBand = (a) => AGE_BANDS.find(([lo, hi]) => a >= lo && a <= hi) || AGE_BANDS[2];
   const fmtShort = (n) => (Math.abs(n) >= 1e6 ? fmt(n / 1e6, Math.abs(n) >= 1e7 ? 0 : 1) + ' مليون' : Math.abs(n) >= 1e3 ? fmt(n / 1e3, 0) + ' ألف' : fmt(n, 0));
 
   /* ===== رسم خطي عام: الزمن من اليسار لليمين، والقيم على المحور الرأسي ===== */
@@ -307,7 +311,7 @@
     st.user = { name: 'أبو فيصل', nid: '1012345678', phone: '501230789', demo: true };
     st.passcode = '111111';
     const now = new Date(), A = advise(500000, 2500, 'mid', false);
-    st.plan = { mode: 'auto', mix: A.mix, pension: 9000, savings: 500000, target: 2500, risk: 'mid', payDay: PAY_DAY, dest: 'bank', paused: false, ack: needsAck(A.mix), ackDate: addMonths(now, -4).toISOString(), balance: 500000, funded: true, createdAt: addMonths(now, -4).toISOString() };
+    st.plan = { mode: 'auto', mix: A.mix, age: 63, pension: 9000, savings: 500000, target: 2500, risk: 'mid', payDay: PAY_DAY, dest: 'bank', paused: false, ack: needsAck(A.mix), ackDate: addMonths(now, -4).toISOString(), balance: 500000, funded: true, createdAt: addMonths(now, -4).toISOString() };
     const amt = income(st.plan);
     for (let i = 3; i >= 1; i--) {
       const base = addMonths(now, -i);
@@ -603,6 +607,7 @@
 
   /* ================= 3) إعداد الدخل ================= */
   const QS = [
+    { k: 'age', type: 'num', title: 'كم عمرك؟', sub: 'نستخدمه عشان نقارن خطتك مع المشابهين لك في العمر', min: 40, max: 90, step: 1, chips: [55, 60, 65], unit: 'سنة' },
     { k: 'hasIncome', type: 'yn', title: 'هل لديك دخل منتظم؟', sub: 'مثال: معاش تقاعدي شهري' },
     { k: 'pension', type: 'amount', title: 'كم معاشك الشهري؟', sub: 'نستخدمه عشان نحسب دخلك الكلي بعد الخطة', min: 1000, max: 40000, step: 500, chips: [5000, 9000, 15000], skip: (d) => !d.hasIncome },
     { k: 'savings', type: 'amount', title: 'كم المبلغ اللي تبي تستثمره؟', sub: 'مكافأة نهاية الخدمة أو مدخراتك', min: 10000, max: 3000000, step: 10000, chips: [250000, 500000, 1000000] },
@@ -611,8 +616,9 @@
     { k: 'risk', type: 'risk', title: 'كيف تصف تقبّلك للمخاطر؟', sub: `نختار لك من أنواع الاستثمار المناسبة لوصفك، بحد أقصى ${RISK_CAP}% مخاطر على رأس المال خلال 12 شهر` },
   ];
   const draft = () => {
-    const d = S.draft || (S.draft = { hasIncome: null, pension: 9000, savings: 500000, target: 2500, auto: null, autoAmt: 1000, risk: null, over: false });
+    const d = S.draft || (S.draft = { age: 62, hasIncome: null, pension: 9000, savings: 500000, target: 2500, auto: null, autoAmt: 1000, risk: null, over: false });
     if (d.autoAmt == null) d.autoAmt = 1000;
+    if (d.age == null) d.age = 62;
     return d;
   };
 
@@ -641,13 +647,13 @@
       const i = clamp(parseInt(n, 10) - 1, 0, QS.length - 1), q = QS[i], d = draft();
       // ترتيب الأزرار: السهم يمين و X يسار كما في التطبيق
       const top = `<header class="topbar"><button class="icon-btn" data-back="/income" aria-label="رجوع">${ic('arrowR')}</button><h1>${skipBtn(`data-action="skipQ" data-i="${i}"`)}</h1><button class="icon-btn filled end" data-go="/home" data-replace="1" aria-label="إغلاق">${ic('x')}</button></header>`;
-      const slider = (key) => { const v = d[key]; return `<div class="amount-big" id="amt">${money(v, 0)}</div>
+      const slider = (key) => { const v = d[key]; return `<div class="amount-big" id="amt">${q.unit ? numUnit(v, q.unit) : money(v, 0)}</div>
           <input type="range" id="rng" min="${q.min}" max="${q.max}" step="${q.step}" value="${v}" aria-label="${q.title}"/>
           <div class="chips">${q.chips.map((c) => `<button class="chip ${c === v ? 'on' : ''}" data-chip="${c}">${fmt(c)}</button>`).join('')}<button class="chip" data-action="typeAmount" data-i="${i}">${ic('pencil')}</button></div>`; };
       let body = '';
       if (q.type === 'yn') {
         body = [['نعم', true], ['لا', false]].map(([l, v]) => `<button class="opt center ${d.hasIncome === v ? 'selected' : ''}" data-action="ans" data-i="${i}" data-v="${v}">${l}</button>`).join('');
-      } else if (q.type === 'amount') {
+      } else if (q.type === 'amount' || q.type === 'num') {
         body = `${slider(q.k)}
           ${q.k === 'target' ? `<p class="target-alert" id="tg-hint" hidden></p>` : ''}
           <div class="cta-bottom"><button class="btn" data-action="ansAmt" data-i="${i}">التالي</button></div>`;
@@ -665,7 +671,7 @@
       const i = parseInt(n, 10) - 1, q = QS[i], rng = root.querySelector('#rng'); if (!q || !rng) return;
       const d = draft(), key = q.amtKey || q.k, amt = root.querySelector('#amt'), hint = root.querySelector('#tg-hint');
       const upd = (v) => {
-        d[key] = v; amt.innerHTML = money(v, 0);
+        d[key] = v; amt.innerHTML = q.unit ? numUnit(v, q.unit) : money(v, 0);
         root.querySelectorAll('[data-chip]').forEach((c) => c.classList.toggle('on', +c.dataset.chip === v));
         // الرسالة تظهر فقط إذا ما فيه أي توزيع بحد مخاطر 10% يوصل للمبلغ خلال 12 شهر
         if (hint) { const ok = reachable(d.savings, v); hint.hidden = ok; hint.textContent = ok ? '' : 'لكي تصل للمبلغ المستهدف يجب زيادة المبلغ أو زيادة المخاطر بعد الموافقة'; }
@@ -697,7 +703,7 @@
     const i = +el.dataset.i, q = QS[i], d = draft(), key = q.amtKey || q.k;
     openSheet({
       title: q.type === 'auto' ? 'المبلغ الشهري المستقطع' : q.title,
-      html: `<div class="input mt8"><input id="ta" type="tel" inputmode="numeric" value="${d[key]}" dir="ltr" style="text-align:right"/>${RIYAL}</div><p class="small mt8">من ${fmt(q.min)} إلى ${fmt(q.max)}</p><button class="btn mt16" id="ta-ok">تم</button>`,
+      html: `<div class="input mt8"><input id="ta" type="tel" inputmode="numeric" value="${d[key]}" dir="ltr" style="text-align:right"/>${q.unit ? `<span class="prefix">${q.unit}</span>` : RIYAL}</div><p class="small mt8">من ${fmt(q.min)} إلى ${fmt(q.max)}</p><button class="btn mt16" id="ta-ok">تم</button>`,
       mount: (sh) => { const inp = sh.querySelector('#ta'); inp.focus(); inp.select(); sh.querySelector('#ta-ok').onclick = () => { d[key] = clamp(+digits(inp.value) || q.min, q.min, q.max); save(); closeSheet(true); render(); }; },
     });
   };
@@ -731,6 +737,7 @@
           <p class="small mt12">${full ? 'خطتك تغطي هدفك الشهري بالكامل.' : `لتغطية هدفك بالكامل بنفس التوزيع تحتاج تستثمر تقريبًا ${money(need, 0)}.`}</p>
         </div>
         <div class="card"><div class="row between"><span>دخلك الكلي مع المعاش</span><b>${money(total, 0)}</b></div>
+          <div class="row between mt8"><span class="small">العمر</span><span class="small">${d.age} سنة</span></div>
           <div class="row between mt8"><span class="small">المبلغ المستثمر</span><span class="small">${money(d.savings, 0)}</span></div>
           <div class="row between mt8"><span class="small">موعد الدفعة</span><span class="small">يوم ${PAY_DAY} من كل شهر</span></div>
           <div class="row between mt8"><span class="small">الاستقطاع الشهري</span><span class="small">${monthly ? money(monthly, 0) : 'بدون'}</span></div>
@@ -752,7 +759,7 @@
   ACTIONS.backToCap = () => { draft().over = false; save(); render(); };
   function createPlan(extra, ack) {
     const d = draft();
-    S.plan = Object.assign({ pension: d.pension || 0, savings: d.savings, target: d.target, risk: d.risk, payDay: PAY_DAY, dest: 'bank', paused: false, ack: !!ack, ackDate: ack ? new Date().toISOString() : null, balance: d.savings, funded: false, payLater: false, createdAt: new Date().toISOString() }, extra);
+    S.plan = Object.assign({ age: d.age || 62, pension: d.pension || 0, savings: d.savings, target: d.target, risk: d.risk, payDay: PAY_DAY, dest: 'bank', paused: false, ack: !!ack, ackDate: ack ? new Date().toISOString() : null, balance: d.savings, funded: false, payLater: false, createdAt: new Date().toISOString() }, extra);
     S.auto = S.auto || {};
     if (d.auto) S.auto.sanad = { amount: d.autoAmt, day: PAY_DAY }; else delete S.auto.sanad;
     S.history = []; S.simOffset = 0; track('plan_approved'); save();
@@ -916,14 +923,15 @@
     const mix = planMix(p), bal = p.funded ? p.balance : p.savings, L = mixLoss(mix);
     const band = RISK[p.risk] ? p.risk : L <= 5 ? 'low' : L <= RISK_CAP ? 'mid' : 'high';
     const peer = { low: [5.4, 0.0012], mid: [6.3, 0.0022], high: [7.2, 0.0045] }[band];
+    const ab = ageBand(p.age || 62);
     const amt = bal < 250000 ? 'أقل من 250 ألف' : bal < 1000000 ? 'من 250 ألف إلى مليون' : 'أكثر من مليون';
     const key = MIX_ORDER.filter((id) => mix[id]).map((id) => id + mix[id]).join('');
     const norm = (v) => { const s = v.slice(-253); return s.filter((_, i) => i % 21 === 0).map((x) => x / s[0] * 100); };
-    const me = norm(series('me-' + key, mixRate(mix), 0.001 + L / 100 * 0.025)), pe = norm(series('peer-' + band, peer[0], peer[1]));
+    const me = norm(series('me-' + key, mixRate(mix), 0.001 + L / 100 * 0.025)), pe = norm(series('peer-' + band + '-' + ab[2], peer[0] + ab[3], peer[1]));
     const r1 = me[me.length - 1] - 100, r2 = pe[pe.length - 1] - 100, diff = r1 - r2;
     const pct = (v) => `<span dir="ltr">${v >= 0 ? '+' : ''}${fmt(v, 1)}%</span>`;
     return `<h3 class="h3 mt24">مقارنتك مع المشابهين لك</h3>
-      <div class="card"><div class="peer-tags"><span class="tag">العمر 60–65</span><span class="tag">المبلغ ${amt}</span><span class="tag">مخاطر ${RISK[band].name}</span></div>
+      <div class="card"><div class="peer-tags"><span class="tag">العمر ${ab[2]}${p.age ? '' : ' (تقديري)'}</span><span class="tag">المبلغ ${amt}</span><span class="tag">مخاطر ${RISK[band].name}</span></div>
         <div class="mt12">${lineChart([{ pts: pe, color: '#9AA3B2', dash: true, label: 'متوسط المشابهين لك (البنش مارك)' }, { pts: me, color: '#3A47E6', label: 'محفظتك' }], [[0, 'قبل سنة'], [6, 'قبل 6 أشهر'], [12, 'الآن']], { yFmt: (v) => `${v >= 100 ? '+' : ''}${fmt(v - 100, 1)}%`, label: 'أداء محفظتك مقابل المشابهين', h: 190 })}</div>
         <div class="row between mt12"><span class="small">محفظتك</span><b class="${r1 >= 0 ? 'pos' : 'neg'}">${pct(r1)}</b></div>
         <div class="row between mt8"><span class="small">متوسط المشابهين</span><b>${pct(r2)}</b></div>
