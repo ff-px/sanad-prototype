@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <meta name="theme-color" content="#3A47E6" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="description" content="سند — نموذج أولي تفاعلي لخطة دخل شهري للمتقاعدين، مقدم ضمن تحدي صُنّاع الحلول" />
+  <title>سند · نموذج أولي</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="stage">
+    <aside class="stage-info">
+      <div class="stage-logo">سند</div>
+      <h2>نموذج أولي تفاعلي</h2>
+      <p>خطة دخل شهري للمتقاعدين بخطة السلال الثلاث، مقترحة لأبيان المالية ضمن تحدي صُنّاع الحلول.</p>
+      <ul>
+        <li>التسجيل</li>
+        <li>إعداد الدخل</li>
+        <li>عرض الدفعات</li>
+        <li>تعديل الخطة</li>
+      </ul>
+      <p class="stage-note">جميع الأرقام توضيحية، ولا يتم جمع أي بيانات أو تنفيذ أي عملية مالية.</p>
+    </aside>
+    <div class="phone">
+      <div class="proto-chip" aria-hidden="true">نموذج أولي · بيانات توضيحية</div>
+      <main id="app" class="app" aria-live="polite"></main>
+      <div id="sheet-root"></div>
+      <div id="toast" class="toast" role="status"></div>
+    </div>
+  </div>
+  <noscript>يحتاج هذا النموذج إلى تفعيل JavaScript.</noscript>
+  <script src="app.js"></script>
+</body>
+</html>
