@@ -1,5 +1,5 @@
 /* سند · نموذج أولي تفاعلي
-   تطبيق صفحة واحدة بدون مكتبات خارجية — يعمل كموقع ثابت على Cloudflare Pages.
+   تطبيق صفحة واحدة بدون مكتبات خارجية — يعمل كموقع ثابت على GitHub Pages.
    كل الأرقام توضيحية. بيانات الحساب والخطة تبقى في المتصفح، وتُرسل فقط إحصاءات استخدام مجهولة إلى PostHog (analytics.js). */
 (() => {
   'use strict';
@@ -98,10 +98,12 @@
   };
   const KEYS = ['liq', 'fix', 'gro'];
   const RISK = {
-    low: { name: 'محافظ', meta: 'الأولوية لحماية رأس المال', alloc: { liq: 30, fix: 50, gro: 20 }, icon: 'shield' },
-    mid: { name: 'متوازن', meta: 'دخل ثابت مع نمو معتدل', alloc: { liq: 25, fix: 50, gro: 25 }, icon: 'scale' },
-    high: { name: 'نمو أعلى', meta: 'يتطلب توقيع إقرار المخاطر', alloc: { liq: 25, fix: 45, gro: 30 }, icon: 'trend' },
+    low: { name: 'محافظ', meta: 'الأولوية لحماية رأس المال', alloc: { liq: 30, fix: 50, gro: 20 }, icon: 'shield', types: ['saving', 'corp-sukuk', 'div-safe'] },
+    mid: { name: 'متوازن', meta: 'دخل ثابت مع نمو معتدل', alloc: { liq: 25, fix: 50, gro: 25 }, icon: 'scale', types: ['saving', 'corp-sukuk', 'div-safe', 'dividends', 'reit', 'div-bal'] },
+    high: { name: 'نمو أعلى', meta: 'قد يتطلب توقيع إقرار المخاطر', alloc: { liq: 25, fix: 45, gro: 30 }, icon: 'trend', types: ['saving', 'corp-sukuk', 'div-safe', 'dividends', 'reit', 'div-bal', 'div-growth', 'div-high', 'saudi'] },
   };
+  const RISK_CAP = 10; // الحد الأعلى لمخاطر رأس المال: أقصى انخفاض متوقع خلال 12 شهر (%)
+  const PAY_DAY = 27;  // يوم الدفعة الشهرية ثابت لكل الخطط
   const ACK_LIMIT = 25;           // سلة النمو فوق هذه النسبة تتطلب إقرار مخاطر
   const FEE = { base: 0.006, growthHigh: 0.009 }; // رسوم إدارة سنوية توضيحية
 
@@ -141,11 +143,76 @@
     { id: 's4', name: 'صكوك شركة طاقة متجددة', sector: 'الطاقة', type: 'وكالة', rate: 7.0, term: 12, freq: 'ربعي', n: 4, min: 1000, funded: 30, days: 21 },
   ];
 
+  /* ===== المستشار الآلي =====
+     لكل نوع: أقصى انخفاض متوقع لرأس المال خلال 12 شهر (loss) وحدود الوزن (min/max). كلها أرقام توضيحية.
+     مخاطر المحفظة = المتوسط المرجّح للانخفاض (تقدير متحفظ بدون أثر التنويع).
+     الدخل الشهري = الرصيد × العائد المتوقع الكلي (توزيعات + نمو) ÷ 12. */
+  const ADV = {
+    saving: { loss: 0.5, min: 10, max: 40 },
+    'corp-sukuk': { loss: 4, min: 0, max: 40 },
+    'div-safe': { loss: 6, min: 0, max: 40 },
+    dividends: { loss: 14, min: 0, max: 30 },
+    reit: { loss: 16, min: 0, max: 25 },
+    'div-bal': { loss: 12, min: 0, max: 30 },
+    'div-growth': { loss: 18, min: 0, max: 20 },
+    'div-high': { loss: 24, min: 0, max: 15 },
+    saudi: { loss: 25, min: 0, max: 15 },
+    future: { loss: 55, min: 0, max: 5 },
+  };
+  const ADV_ALL = ['saving', 'corp-sukuk', 'div-safe', 'dividends', 'reit', 'div-bal', 'div-growth', 'div-high', 'saudi'];
+  const mixRate = (w) => Object.keys(w).reduce((s, id) => s + (w[id] || 0) * (PORTS[id] ? PORTS[id].rate : 0) / 100, 0); // %
+  const mixLoss = (w) => Object.keys(w).reduce((s, id) => s + (w[id] || 0) * (ADV[id] ? ADV[id].loss : 0) / 100, 0); // %
+  // توزيع جشع حسب (العائد − λ × المخاطر) مع احترام حدود كل نوع؛ λ كبيرة = أقل مخاطرة، λ = 0 = أعلى عائد
+  function greedy(ids, lam) {
+    const w = {}; let left = 100;
+    ids.forEach((id) => { w[id] = ADV[id].min; left -= ADV[id].min; });
+    const score = (id) => PORTS[id].rate - lam * ADV[id].loss;
+    for (const id of ids.slice().sort((a, b) => score(b) - score(a))) { const add = Math.min(left, ADV[id].max - w[id]); w[id] += add; left -= add; if (left <= 0) break; }
+    return w;
+  }
+  const lerpMix = (A, B, t) => Object.keys(A).reduce((w, id) => (w[id] = A[id] + (B[id] - A[id]) * t, w), {});
+  function roundMix(w, step = 5) { // تقريب لأقرب 5% مع مجموع 100%
+    const ids = Object.keys(w), fl = {}; let s = 0;
+    ids.forEach((id) => { fl[id] = Math.floor(w[id] / step + 1e-9) * step; s += fl[id]; });
+    ids.slice().sort((a, b) => (w[b] - fl[b]) - (w[a] - fl[a])).slice(0, Math.round((100 - s) / step)).forEach((id) => (fl[id] += step));
+    return fl;
+  }
+  // أفضل توزيع على حدود الشرط ok (شرط رتيب في λ). best = 60 لأقل مخاطرة، 0 لأعلى عائد
+  function edge(ids, ok, best) {
+    const worst = best ? 0 : 60;
+    if (ok(greedy(ids, best))) return greedy(ids, best);
+    if (!ok(greedy(ids, worst))) return null;
+    let s = worst, u = best;
+    for (let k = 0; k < 40; k++) { const m = (s + u) / 2; if (ok(greedy(ids, m))) s = m; else u = m; }
+    const A = greedy(ids, s), B = greedy(ids, u);
+    let a = 0, b = 1;
+    for (let k = 0; k < 30; k++) { const m = (a + b) / 2; if (ok(lerpMix(A, B, m))) a = m; else b = m; }
+    const w = roundMix(lerpMix(A, B, a));
+    for (let k = 0; k < 40 && !ok(w); k++) { const dn = ids.find((id) => w[id] > A[id]), up = ids.find((id) => w[id] < A[id]); if (!dn || !up) return A; w[dn] -= 5; w[up] += 5; }
+    return w;
+  }
+  const cleanMix = (w) => MIX_ORDER.reduce((r, id) => { if (w[id] > 0) r[id] = w[id]; return r; }, {});
+  const reqRate = (savings, target) => target * 12 / Math.max(savings, 1) * 100;
+  // أقل مخاطرة توصل للدخل المستهدف ضمن الحد
+  function hitTarget(ids, ty, cap) { const w = edge(ids, (m) => mixRate(m) >= ty - 1e-9, 60); return w && mixLoss(w) <= cap + 1e-9 ? w : null; }
+  const reachable = (savings, target) => !!hitTarget(ADV_ALL, reqRate(savings, target), RISK_CAP);
+  /* يحاول دائمًا يوصل للمبلغ المستهدف بالكامل. why: profile = أنواع وصف المخاطر لا تكفي، cap = حد 10% يمنع، max = حتى بدون حد ما يكفي */
+  function advise(savings, target, riskKey, over) {
+    const ty = reqRate(savings, target), ids = (RISK[riskKey] || RISK.mid).types;
+    const w = over ? (hitTarget(ADV_ALL, ty, RISK_CAP) || hitTarget(ADV_ALL, ty, 100)) : hitTarget(ids, ty, RISK_CAP);
+    if (w) return { mix: cleanMix(w), ok: true, why: null };
+    const pool = over ? ADV_ALL : ids, cap = over ? 100 : RISK_CAP;
+    const best = edge(pool, (m) => mixLoss(m) <= cap + 1e-9, 0) || greedy(pool, 60);
+    return { mix: cleanMix(best), ok: false, why: over ? 'max' : hitTarget(ADV_ALL, ty, RISK_CAP) ? 'profile' : 'cap' };
+  }
+
   /* ================= الحالة ================= */
   const KEY = 'sanad_proto_v1';
   const defaultState = () => ({ v: 1, user: null, passcode: null, plan: null, portfolios: [], history: [], sukuk: [], mixDraft: null, simOffset: 0, auto: null, events: {}, draft: null, reg: null, calc: { pf: 'div-safe', init: 20000, monthly: 1500, year: 15, saveYear: 1, period: 'all' } });
   let S = load();
+  if (S.plan) S.plan.payDay = PAY_DAY;
   let unlocked = false;
+  let REINV = false; // عرض أثر إعادة استثمار التوزيعات في الرسوم الخطية
   function load() {
     try { const raw = localStorage.getItem(KEY); if (raw) return Object.assign(defaultState(), JSON.parse(raw)); } catch (e) { /* التخزين غير متاح */ }
     return defaultState();
@@ -161,12 +228,12 @@
     if (d <= t) { m += 1; d = new Date(y, m, 1); d.setDate(Math.min(day, dim(d.getFullYear(), d.getMonth()))); }
     return d;
   }
-  /* مكوّنات الخطة: إما السلال الثلاث (مقترحة) أو مزيج محافظ يصممه المستخدم */
+  /* مكوّنات الخطة: السلال الثلاث (نسخة قديمة)، أو مزيج محافظ من المستشار الآلي (auto) أو من تصميم المستخدم (custom) */
   function comps(p, o = {}) {
     const mode = o.mode || p.mode || 'preset';
-    if (mode === 'custom') {
+    if (mode !== 'preset') {
       const mix = o.mix || p.mix || {};
-      return MIX_ORDER.filter((id) => mix[id] > 0).map((id) => { const q = PORTS[id]; return { k: id, name: q.name, sub: q.short, w: mix[id], y: q.dy / 100, tr: q.rate / 100, hex: q.hex, tk: q.tk, src: 'توزيعات محفظة ' + q.name, high: HIGH_RISK.includes(id) }; });
+      return MIX_ORDER.filter((id) => mix[id] > 0).map((id) => { const q = PORTS[id]; return { k: id, name: q.name, sub: q.short, w: mix[id], y: q.rate / 100, tr: q.rate / 100, hex: q.hex, tk: q.tk, src: 'عوائد محفظة ' + q.name, high: HIGH_RISK.includes(id) }; });
     }
     const alloc = o.alloc || p.alloc;
     return KEYS.map((k) => ({ k, name: BASKETS[k].name, sub: BASKETS[k].sub, w: alloc[k], y: BASKETS[k].y, tr: BASKETS[k].tr, hex: BASKETS[k].hex, tk: BASKETS[k].tk, src: BASKETS[k].src, high: k === 'gro' && alloc[k] > ACK_LIMIT }));
@@ -181,20 +248,66 @@
   function riskLabel(p, o = {}) {
     const mode = o.mode || p.mode || 'preset';
     if (mode === 'preset') { const a = o.alloc || p.alloc; return a.gro > ACK_LIMIT ? 'أعلى (بإقرار)' : a.gro >= 25 ? 'متوسطة' : 'منخفضة'; }
-    const h = highShare(p, o);
-    return h === 0 ? 'منخفضة' : h <= 30 ? 'متوسطة (بإقرار)' : 'مرتفعة (بإقرار)';
+    const L = mixLoss(o.mix || p.mix || {});
+    return `${L <= 5 ? 'منخفضة' : L <= RISK_CAP ? 'متوسطة' : 'مرتفعة'} · ${fmt(L, 1)}%`;
   }
   const presetToMix = (a) => { const d = Math.ceil(a.gro / 2 / 5) * 5; return { saving: a.liq, 'corp-sukuk': a.fix, dividends: d, reit: a.gro - d }; };
+  const planMix = (p) => ((p.mode || 'preset') === 'preset' ? presetToMix(p.alloc) : p.mix || {});
+  const needsAck = (mix) => highShare({ mode: 'custom', mix }) > 0 || mixLoss(mix) > RISK_CAP + 1e-9;
+  const modeBadge = (p) => { const m = p.mode || 'preset'; return m === 'custom' ? 'من تصميمك' : m === 'auto' ? 'المستشار الآلي' : 'خطة مقترحة'; };
+  const fmtShort = (n) => (Math.abs(n) >= 1e6 ? fmt(n / 1e6, Math.abs(n) >= 1e7 ? 0 : 1) + ' مليون' : Math.abs(n) >= 1e3 ? fmt(n / 1e3, 0) + ' ألف' : fmt(n, 0));
+
+  /* ===== رسم خطي عام: الزمن من اليسار لليمين، والقيم على المحور الرأسي ===== */
+  function lineChart(series, xt, o = {}) {
+    const W = 360, H = o.h || 210, L = 58, R = 24, T = 14, B = 28;
+    const all = series.flatMap((s) => s.pts);
+    let mn = o.min != null ? o.min : Math.min(...all), mx = Math.max(...all);
+    if (o.min == null) { const pad = (mx - mn) * 0.08 || 1; mn -= pad; mx += pad; } else mx = mx <= mn ? mn + 1 : mx + (mx - mn) * 0.05;
+    const n = series[0].pts.length, yf = o.yFmt || fmtShort;
+    const X = (i) => L + i / (n - 1) * (W - L - R), Y = (v) => T + (1 - (v - mn) / (mx - mn)) * (H - T - B);
+    const grid = [0, 1, 2, 3].map((k) => { const v = mn + (mx - mn) * k / 3, y = Y(v).toFixed(1); return `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="#DCE3EE"/><text x="${L / 2}" y="${(+y + 4).toFixed(1)}" text-anchor="middle" font-size="11" fill="#6B7383">${yf(v)}</text>`; }).join('');
+    const xl = xt.map(([i, l]) => `<text x="${X(i).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="11" fill="#6B7383">${l}</text>`).join('');
+    const axes = `<line x1="${L}" x2="${L}" y1="${T}" y2="${H - B}" stroke="#B8C2D3"/><line x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}" stroke="#B8C2D3"/>`;
+    const lines = series.map((s) => {
+      const d = s.pts.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(''), li = s.pts.length - 1;
+      return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.dash ? 2.5 : 3.5}"${s.dash ? ' stroke-dasharray="6 5"' : ''} stroke-linecap="round" stroke-linejoin="round"/><circle cx="${X(li).toFixed(1)}" cy="${Y(s.pts[li]).toFixed(1)}" r="4.5" fill="#fff" stroke="${s.color}" stroke-width="2.5"/>`;
+    }).join('');
+    const legend = series.slice().reverse().map((s) => `<span><i class="${s.dash ? 'dash' : ''}" style="${s.dash ? `border-color:${s.color}` : `background:${s.color}`}"></i>${s.label}</span>`).join('');
+    return `<svg class="lc" viewBox="0 0 ${W} ${H}" role="img" aria-label="${o.label || 'رسم بياني خطي'}">${grid}${axes}${xl}${lines}</svg><div class="lc-legend">${legend}</div>`;
+  }
+  const weightsHTML = (mix) => `<div class="weights"><span class="wl">الأوزان:</span>${MIX_ORDER.filter((id) => mix[id] > 0).map((id) => `<span><i style="background:${PORTS[id].hex}"></i>${PORTS[id].name} <b>${mix[id]}%</b></span>`).join('')}</div>`;
+  // توقع 15 سنة: الدخل يُصرف شهريًا (القيمة ثابتة + الاستقطاع) مقابل إعادة استثمار الدخل بالكامل
+  function project(P, Y, monthly, years = 15) {
+    const r = Y / 12, out = { val: [P], inc: [0], tot: [P], re: [P] };
+    let v = P, inc = 0, re = P;
+    for (let m = 1; m <= years * 12; m++) {
+      inc += v * r; v += monthly; re = re * (1 + r) + monthly;
+      if (m % 12 === 0) { out.val.push(v); out.inc.push(inc); out.tot.push(v + inc); out.re.push(re); }
+    }
+    return out;
+  }
+  const reinvToggle = (id) => `<div class="reinv"><span>إعادة استثمار التوزيعات</span><label class="toggle"><input type="checkbox" id="${id}" ${REINV ? 'checked' : ''} aria-label="إعادة استثمار التوزيعات"/><span></span></label></div>`;
+  function projHTML(P, mix, monthly) {
+    const pr = project(P, mixRate(mix) / 100, monthly), e = 15;
+    const xt = [[0, 'الآن'], [5, '5 سنوات'], [10, '10 سنوات'], [15, '15 سنة']];
+    const chart = REINV
+      ? lineChart([{ pts: pr.tot, color: '#9AA3B2', dash: true, label: 'بدون إعادة استثمار (القيمة + الدخل المستلم)' }, { pts: pr.re, color: '#3A47E6', label: 'مع إعادة استثمار التوزيعات' }], xt, { min: 0, label: 'أثر إعادة استثمار التوزيعات خلال 15 سنة' })
+      : lineChart([{ pts: pr.inc, color: '#13A57A', label: 'الدخل المستلم التراكمي' }, { pts: pr.val, color: '#3A47E6', label: 'قيمة محفظتك' }], xt, { min: 0, label: 'قيمة الاستثمار خلال 15 سنة' });
+    const note = REINV
+      ? `بعد 15 سنة: ${money(pr.re[e], 0)} مع إعادة الاستثمار، مقابل ${money(pr.tot[e], 0)} بدونها (فرق ${money(pr.re[e] - pr.tot[e], 0)}). مع إعادة الاستثمار ما تستلم دخل شهري خلال الفترة.`
+      : `خلال 15 سنة تستلم دخل إجمالي ${money(pr.inc[e], 0)} تقريبًا، وتبقى قيمة محفظتك ${money(pr.val[e], 0)}${monthly ? ' مع الاستقطاع الشهري' : ''}.`;
+    return `${chart}<div class="lc-axes"><span>المحور الأفقي: السنوات</span><span>المحور الرأسي: القيمة بالريال</span></div>${weightsHTML(mix)}<p class="small mt8" style="line-height:1.8">${note}</p>`;
+  }
   const portBalance = (id) => (S.portfolios.find((x) => x.id === id) || {}).balance || 0;
   const totalBalance = () => (S.plan && S.plan.funded ? S.plan.balance : 0) + S.portfolios.reduce((s, x) => s + x.balance, 0);
 
   function seedDemo() {
     const st = defaultState();
     st.events = S.events || {};
-    st.user = { name: 'أبو فيصل', phone: '501230789', demo: true };
+    st.user = { name: 'أبو فيصل', nid: '1012345678', phone: '501230789', demo: true };
     st.passcode = '111111';
-    const now = new Date();
-    st.plan = { mode: 'preset', pension: 9000, savings: 500000, target: 2500, risk: 'high', alloc: { ...RISK.high.alloc }, payDay: 1, dest: 'bank', paused: false, ack: true, ackDate: addMonths(now, -4).toISOString(), balance: 500000, funded: true, createdAt: addMonths(now, -4).toISOString() };
+    const now = new Date(), A = advise(500000, 2500, 'mid', false);
+    st.plan = { mode: 'auto', mix: A.mix, pension: 9000, savings: 500000, target: 2500, risk: 'mid', payDay: PAY_DAY, dest: 'bank', paused: false, ack: needsAck(A.mix), ackDate: addMonths(now, -4).toISOString(), balance: 500000, funded: true, createdAt: addMonths(now, -4).toISOString() };
     const amt = income(st.plan);
     for (let i = 3; i >= 1; i--) {
       const base = addMonths(now, -i);
@@ -240,6 +353,7 @@
     if (!hit) { go('/splash', { replace: true }); return; }
     const def = hit.def;
     if (def.auth && !S.user) { go('/welcome', { replace: true }); return; }
+    if (def.auth && !unlocked && !S.passcode) unlocked = true; // تخطى إنشاء رمز المرور أو زائر
     if (def.auth && !unlocked) { go('/lock', { replace: true }); return; }
     const html = def.view(params, query);
     if (html === null) return; // تم التحويل داخل الشاشة
@@ -314,6 +428,13 @@
   navRoot.addEventListener('click', onClick);
   ACTIONS.closeSheet = () => closeSheet();
   ACTIONS.demo = () => { seedDemo(); unlocked = true; track('demo_start'); go('/home', { replace: true }); toast('أهلًا أبو فيصل — هذا حساب تجريبي'); };
+  // تصفّح التطبيق بدون تسجيل
+  ACTIONS.guest = () => {
+    if (!(S.user && S.user.guest)) { const ev = S.events; S = defaultState(); S.events = ev; }
+    S.user = { guest: true }; S.passcode = null; S.reg = null; unlocked = true; track('guest_start'); save();
+    closeSheet(true); go('/home', { replace: true }); toast('تقدر تتصفح التطبيق وتسجّل متى ما حبيت');
+  };
+  const skipBtn = (attr) => `<button class="skip" ${attr}>تخطي</button>`;
 
   /* ================= 1) البداية ================= */
   route('/splash', {
@@ -321,7 +442,7 @@
     view: () => `<div class="splash-logo">${LOGO}<div class="wm"><b>سند</b><span>Sanad</span></div></div><div class="splash-note">مفهوم مقترح لأبيان المالية · نموذج أولي</div>`,
     mount: () => later(() => {
       if (!S.user) go('/welcome', { replace: true });
-      else if (!unlocked) go('/lock', { replace: true });
+      else if (!unlocked && S.passcode) go('/lock', { replace: true });
       else go('/home', { replace: true });
     }, 1300),
   });
@@ -340,13 +461,14 @@
       <p class="sub">نحوّل مكافأة نهاية الخدمة ومدخراتك إلى دفعة شهرية ثابتة، بخطة متوافقة مع الشريعة.</p>
       <ul class="checks">
         <li>${ic('check')}خطة السلال الثلاث: سيولة، دخل ثابت، نمو</li>
-        <li>${ic('check')}دفعة شهرية تختار يومها ووجهتها</li>
-        <li>${ic('check')}تعدّل خطتك متى ما احتجت</li>
+        <li>${ic('check')}دفعة شهرية ثابتة يوم ${PAY_DAY} من كل شهر</li>
+        <li>${ic('check')}مستشار آلي يوصلك لهدفك بحد مخاطر ${RISK_CAP}%</li>
       </ul>
       <div class="cta-bottom">
         <button class="btn" data-go="/register">إنشاء حساب</button>
         <button class="btn soft mt12" data-action="demo">تجربة سريعة بحساب أبو فيصل</button>
-        ${S.user ? '<button class="btn soft mt12" data-go="/lock">تسجيل الدخول</button>' : ''}
+        ${S.user && S.passcode ? '<button class="btn soft mt12" data-go="/lock">تسجيل الدخول</button>' : ''}
+        <button class="link center mt12" style="display:block;width:100%;padding:8px" data-action="guest">تصفّح التطبيق بدون تسجيل</button>
       </div>`,
   });
 
@@ -354,37 +476,47 @@
   route('/register', {
     view: () => {
       const r = S.reg || {};
-      return `${topbar('', '', '/welcome')}
+      return `${topbar(skipBtn('data-action="regSkip"'), '', '/welcome')}
       <h2 class="h2">إنشاء حساب</h2>
       <p class="sub mb16">أدخل بياناتك وبنرسل لك رمز تحقق على جوالك.</p>
-      <label class="field"><span>الاسم</span><div class="input" id="f-name"><input id="name" autocomplete="name" placeholder="مثال: أبو فيصل" value="${esc(r.name || '')}"/></div></label>
+      <label class="field"><span>رقم الهوية الوطنية / الإقامة</span><div class="input" id="f-nid"><input id="nid" type="tel" inputmode="numeric" placeholder="1XXXXXXXXX" maxlength="10" dir="ltr" style="text-align:right" value="${esc(r.nid || '')}" aria-label="رقم الهوية"/></div></label>
       <label class="field"><span>رقم الجوال</span><div class="input" id="f-phone"><input id="phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="5XXXXXXXX" maxlength="10" dir="ltr" style="text-align:right" value="${esc(r.phone || '')}"/><span class="prefix">+966</span></div></label>
       <label class="check mt8"><input type="checkbox" id="terms" ${r.terms ? 'checked' : ''}/><span>أوافق على الشروط والأحكام وسياسة الخصوصية، وأعرف أن هذا نموذج أولي لا يحفظ بياناتي خارج جهازي، ويجمع فقط إحصاءات استخدام مجهولة لتحسينه.</span></label>
       <div class="err-msg" id="err"></div>
-      <div class="cta-bottom"><button class="btn" data-action="register">متابعة</button></div>`;
+      <div class="cta-bottom"><button class="btn" data-action="register">متابعة</button><button class="link center mt12" style="display:block;width:100%;padding:8px" data-action="guest">تصفّح التطبيق بدون تسجيل</button></div>`;
     },
-    mount: (root) => { const n = root.querySelector('#name'); if (!n.value) n.focus(); },
+    mount: (root) => { const n = root.querySelector('#nid'); if (!n.value) n.focus(); },
   });
   ACTIONS.register = () => {
-    const name = document.getElementById('name').value.trim();
+    const nid = digits(document.getElementById('nid').value);
     let ph = digits(document.getElementById('phone').value);
     if (ph.startsWith('966')) ph = ph.slice(3);
     if (ph.startsWith('0')) ph = ph.slice(1);
     const terms = document.getElementById('terms').checked;
     const err = document.getElementById('err');
-    document.getElementById('f-name').classList.toggle('err', !name);
+    document.getElementById('f-nid').classList.toggle('err', !/^[12]\d{9}$/.test(nid));
     document.getElementById('f-phone').classList.toggle('err', !/^5\d{8}$/.test(ph));
-    if (!name) { err.textContent = 'اكتب اسمك'; return; }
+    if (!/^[12]\d{9}$/.test(nid)) { err.textContent = 'رقم الهوية لازم يتكون من 10 أرقام ويبدأ بـ 1 أو 2'; return; }
     if (!/^5\d{8}$/.test(ph)) { err.textContent = 'رقم الجوال لازم يبدأ بـ 5 ويتكون من 9 أرقام'; return; }
     if (!terms) { err.textContent = 'وافق على الشروط للمتابعة'; return; }
-    S.reg = { name, phone: ph, terms, code: String(1000 + Math.floor(Math.random() * 9000)) }; save();
+    S.reg = { nid, phone: ph, terms, code: String(1000 + Math.floor(Math.random() * 9000)) }; save();
     go('/otp');
   };
+  // تخطي التسجيل: بدون جوال ما فيه رمز تحقق، فننتقل مباشرة لرمز المرور
+  ACTIONS.regSkip = () => { S.reg = { nid: '', phone: '', terms: true, code: '', skipped: true }; track('step_skipped'); save(); go('/passcode'); };
+  function finishReg(pc) {
+    const keep = S.user && S.user.guest;
+    S.user = { nid: (S.reg && S.reg.nid) || '', phone: (S.reg && S.reg.phone) || '' }; S.passcode = pc; S.reg = null;
+    if (!keep) { S.plan = null; S.portfolios = []; S.history = []; S.simOffset = 0; }
+    unlocked = true; track(pc ? 'register_done' : 'register_skipped'); save();
+    go(S.plan ? '/home' : '/income', { replace: true }); toast('تم إنشاء حسابك');
+  }
 
   route('/otp', {
     view: () => {
       if (!S.reg) { go('/register', { replace: true }); return null; }
-      return `${topbar('', '', '/register')}
+      if (!S.reg.phone) { go('/passcode', { replace: true }); return null; }
+      return `${topbar(skipBtn('data-go="/passcode" data-replace="1"'), '', '/register')}
       <div class="notif" id="notif" role="button" aria-label="تعبئة الرمز"><div class="av">${ic('user')}</div><div style="flex:1"><div class="t">سند <small>الآن</small></div><div class="m">من فضلك استخدم رمز التفعيل التجريبي ${S.reg.code} لتسجيل الدخول</div></div></div>
       <h2 class="q-title" style="margin-top:20px">ادخل رمز التحقق</h2>
       <p class="q-sub" style="margin-bottom:0">تم إرسال الرمز إلى <span dir="ltr">+966xxx${S.reg.phone.slice(-4)}</span></p>
@@ -415,7 +547,7 @@
   route('/passcode', {
     view: () => {
       if (!S.reg) { go('/register', { replace: true }); return null; }
-      return `${topbar('', '', '/register')}<div class="lock-head">${ic('lock')}</div><h2 class="q-title" id="pc-t">أنشئ رمز المرور</h2><p class="q-sub" id="pc-s" style="margin:0">6 أرقام تستخدمها لفتح التطبيق</p><div id="pc-d">${dots(0)}</div>${keypad()}`;
+      return `${topbar(skipBtn('data-action="pcSkip"'), '', '/register')}<div class="lock-head">${ic('lock')}</div><h2 class="q-title" id="pc-t">أنشئ رمز المرور</h2><p class="q-sub" id="pc-s" style="margin:0">6 أرقام تستخدمها لفتح التطبيق</p><div id="pc-d">${dots(0)}</div>${keypad()}`;
     },
     mount: (root) => {
       let first = '', cur = '';
@@ -425,10 +557,8 @@
         paint();
         if (cur.length === 6) later(() => {
           if (!first) { first = cur; cur = ''; root.querySelector('#pc-t').textContent = 'أكّد رمز المرور'; root.querySelector('#pc-s').textContent = 'أعد إدخال الرمز نفسه'; paint(); return; }
-          if (cur === first) {
-            S.user = { name: S.reg.name, phone: S.reg.phone }; S.passcode = cur; S.reg = null; S.plan = null; S.portfolios = []; S.history = []; S.simOffset = 0;
-            unlocked = true; track('register_done'); save(); go('/income', { replace: true }); toast('تم إنشاء حسابك');
-          } else {
+          if (cur === first) finishReg(cur);
+          else {
             const d = root.querySelector('.dots'); d.classList.add('shake'); toast('الرمزان غير متطابقين، حاول مرة ثانية');
             first = ''; cur = ''; later(() => { root.querySelector('#pc-t').textContent = 'أنشئ رمز المرور'; root.querySelector('#pc-s').textContent = '6 أرقام تستخدمها لفتح التطبيق'; paint(); }, 450);
           }
@@ -437,9 +567,12 @@
     },
   });
 
+  ACTIONS.pcSkip = () => { if (!S.reg) S.reg = { skipped: true }; track('step_skipped'); finishReg(null); };
+
   route('/lock', {
     view: () => {
       if (!S.user) { go('/welcome', { replace: true }); return null; }
+      if (!S.passcode) { unlocked = true; go(S.plan ? '/home' : '/income', { replace: true }); return null; }
       return `<header class="topbar"><span></span><h1></h1><span></span></header>
       <div class="lock-head">${ic('lock')}</div><h2 class="q-title">أدخل رمز المرور</h2>
       <div id="lk-d">${dots(0)}</div>
@@ -474,14 +607,18 @@
     { k: 'pension', type: 'amount', title: 'كم معاشك الشهري؟', sub: 'نستخدمه عشان نحسب دخلك الكلي بعد الخطة', min: 1000, max: 40000, step: 500, chips: [5000, 9000, 15000], skip: (d) => !d.hasIncome },
     { k: 'savings', type: 'amount', title: 'كم المبلغ اللي تبي تستثمره؟', sub: 'مكافأة نهاية الخدمة أو مدخراتك', min: 10000, max: 3000000, step: 10000, chips: [250000, 500000, 1000000] },
     { k: 'target', type: 'amount', title: 'كم تحتاج دخل إضافي كل شهر؟', sub: 'فوق معاشك التقاعدي', min: 500, max: 20000, step: 100, chips: [1500, 2500, 4000] },
-    { k: 'risk', type: 'risk', title: 'كيف تصف تقبّلك للمخاطر؟', sub: 'نوزّع مدخراتك على السلال الثلاث حسب اختيارك' },
-    { k: 'payDay', type: 'day', title: 'متى تبي تستلم دفعتك الشهرية؟', sub: 'تقدر تغيّرها لاحقًا من تعديل الخطة' },
+    { k: 'auto', type: 'auto', title: 'تبي استقطاع شهري؟', sub: `اختياري: نودع مبلغ ثابت من حسابك يوم ${PAY_DAY} من كل شهر عشان تكبر خطتك`, amtKey: 'autoAmt', min: 100, max: 20000, step: 100, chips: [500, 1000, 2000] },
+    { k: 'risk', type: 'risk', title: 'كيف تصف تقبّلك للمخاطر؟', sub: `نختار لك من أنواع الاستثمار المناسبة لوصفك، بحد أقصى ${RISK_CAP}% مخاطر على رأس المال خلال 12 شهر` },
   ];
-  const draft = () => (S.draft || (S.draft = { hasIncome: null, pension: 9000, savings: 500000, target: 2500, risk: null, payDay: null }));
+  const draft = () => {
+    const d = S.draft || (S.draft = { hasIncome: null, pension: 9000, savings: 500000, target: 2500, auto: null, autoAmt: 1000, risk: null, over: false });
+    if (d.autoAmt == null) d.autoAmt = 1000;
+    return d;
+  };
 
   route('/income', {
     auth: true,
-    view: () => `<header class="topbar"><button class="icon-btn filled" data-back="/home" aria-label="إغلاق">${ic('x')}</button><h1></h1><span></span></header>
+    view: () => `<header class="topbar"><button class="icon-btn filled" data-back="/home" aria-label="إغلاق">${ic('x')}</button><h1>${skipBtn('data-go="/home" data-replace="1"')}</h1><span></span></header>
       <div class="steps-band" aria-hidden="true"><div class="glow"></div><div class="line" style="left:120px;right:50%"></div><div class="line" style="left:50%;right:120px;background:#D9E6F8"></div><div class="tri"></div><div class="p c">${ic('target')}</div><div class="p b">01</div><div class="p a">02</div></div>
       <h2 class="q-title" style="font-size:32px">إعداد الدخل</h2>
       <p class="sub center" style="font-size:18px;line-height:1.9">سواء عندك هدف محدد أو لا، بنساعدك تبني خطة دخل شهري تناسبك، متوافقة مع الشريعة.</p>
@@ -494,6 +631,7 @@
   function nextQ(i) {
     const d = draft(); let n = i + 1;
     while (n < QS.length && QS[n].skip && QS[n].skip(d)) n += 1;
+    if (n >= QS.length) d.over = false;
     save();
     go(n >= QS.length ? '/income/result' : `/income/q/${n + 1}`);
   }
@@ -502,33 +640,35 @@
     view: ({ n }) => {
       const i = clamp(parseInt(n, 10) - 1, 0, QS.length - 1), q = QS[i], d = draft();
       // ترتيب الأزرار: السهم يمين و X يسار كما في التطبيق
-      const top = `<header class="topbar"><button class="icon-btn" data-back="/income" aria-label="رجوع">${ic('arrowR')}</button><h1></h1><button class="icon-btn filled end" data-go="/home" data-replace="1" aria-label="إغلاق">${ic('x')}</button></header>`;
+      const top = `<header class="topbar"><button class="icon-btn" data-back="/income" aria-label="رجوع">${ic('arrowR')}</button><h1>${skipBtn(`data-action="skipQ" data-i="${i}"`)}</h1><button class="icon-btn filled end" data-go="/home" data-replace="1" aria-label="إغلاق">${ic('x')}</button></header>`;
+      const slider = (key) => { const v = d[key]; return `<div class="amount-big" id="amt">${money(v, 0)}</div>
+          <input type="range" id="rng" min="${q.min}" max="${q.max}" step="${q.step}" value="${v}" aria-label="${q.title}"/>
+          <div class="chips">${q.chips.map((c) => `<button class="chip ${c === v ? 'on' : ''}" data-chip="${c}">${fmt(c)}</button>`).join('')}<button class="chip" data-action="typeAmount" data-i="${i}">${ic('pencil')}</button></div>`; };
       let body = '';
       if (q.type === 'yn') {
         body = [['نعم', true], ['لا', false]].map(([l, v]) => `<button class="opt center ${d.hasIncome === v ? 'selected' : ''}" data-action="ans" data-i="${i}" data-v="${v}">${l}</button>`).join('');
       } else if (q.type === 'amount') {
-        const v = d[q.k];
-        body = `<div class="amount-big" id="amt">${money(v, 0)}</div>
-          <input type="range" id="rng" min="${q.min}" max="${q.max}" step="${q.step}" value="${v}" aria-label="${q.title}"/>
-          <div class="chips">${q.chips.map((c) => `<button class="chip ${c === v ? 'on' : ''}" data-chip="${c}">${fmt(c)}</button>`).join('')}<button class="chip" data-action="typeAmount" data-i="${i}">${ic('pencil')}</button></div>
-          ${q.k === 'target' ? `<p class="small center mt16" id="tg-hint"></p>` : ''}
+        body = `${slider(q.k)}
+          ${q.k === 'target' ? `<p class="target-alert" id="tg-hint" hidden></p>` : ''}
           <div class="cta-bottom"><button class="btn" data-action="ansAmt" data-i="${i}">التالي</button></div>`;
+      } else if (q.type === 'auto') {
+        body = `<button class="opt ${d.auto === true ? 'selected' : ''}" data-action="autoPick" data-v="1">${ic('repeat')}<span class="grow">نعم، أبي استقطاع شهري</span></button>
+          <button class="opt ${d.auto === false ? 'selected' : ''}" data-action="autoPick" data-v="0">${ic('x')}<span class="grow">لا، بدون استقطاع</span></button>
+          ${d.auto ? `<p class="h3 center mt24">المبلغ الشهري المستقطع</p>${slider(q.amtKey)}` : ''}
+          <div class="cta-bottom"><button class="btn" data-action="ansAmt" data-i="${i}" ${d.auto == null ? 'disabled' : ''}>التالي</button></div>`;
       } else if (q.type === 'risk') {
-        body = Object.entries(RISK).map(([k, r]) => `<button class="opt ${d.risk === k ? 'selected' : ''}" data-action="ans" data-i="${i}" data-v="${k}">${ic(r.icon)}<span class="grow">${r.name}<div class="meta">${r.meta}</div><div class="meta">سيولة ${r.alloc.liq}% · دخل ثابت ${r.alloc.fix}% · نمو ${r.alloc.gro}%</div></span></button>`).join('');
-      } else if (q.type === 'day') {
-        const opts = [[1, 'يوم 1', 'بداية الشهر', 'sprout'], [10, 'يوم 10', 'بعد المعاش', 'sun'], [25, 'يوم 25', 'نهاية الشهر', 'moon']];
-        body = opts.map(([v, l, m, icn]) => `<button class="opt ${d.payDay === v ? 'selected' : ''}" data-action="ans" data-i="${i}" data-v="${v}">${ic(icn)}<span class="grow">${l}</span><span class="meta">${m}</span></button>`).join('')
-          + `<button class="opt ${d.payDay && ![1, 10, 25].includes(d.payDay) ? 'selected' : ''}" data-action="pickDay" data-i="${i}">${ic('pencil')}<span class="grow">${d.payDay && ![1, 10, 25].includes(d.payDay) ? 'يوم ' + d.payDay : 'أدخل يومًا'}</span></button>`;
+        body = Object.entries(RISK).map(([k, r]) => `<button class="opt ${d.risk === k ? 'selected' : ''}" data-action="ans" data-i="${i}" data-v="${k}">${ic(r.icon)}<span class="grow">${r.name}<div class="meta">${r.meta}</div><div class="opt-tags">${r.types.map((id) => `<span class="tag">${PORTS[id].name}</span>`).join('')}</div></span></button>`).join('');
       }
       return `${top}${seg(i)}<h2 class="q-title">${q.title}</h2><p class="q-sub">${q.sub}</p>${body}`;
     },
     mount: (root, { n }) => {
-      const i = parseInt(n, 10) - 1, q = QS[i]; if (!q || q.type !== 'amount') return;
-      const d = draft(), rng = root.querySelector('#rng'), amt = root.querySelector('#amt'), hint = root.querySelector('#tg-hint');
+      const i = parseInt(n, 10) - 1, q = QS[i], rng = root.querySelector('#rng'); if (!q || !rng) return;
+      const d = draft(), key = q.amtKey || q.k, amt = root.querySelector('#amt'), hint = root.querySelector('#tg-hint');
       const upd = (v) => {
-        d[q.k] = v; amt.innerHTML = money(v, 0);
+        d[key] = v; amt.innerHTML = money(v, 0);
         root.querySelectorAll('[data-chip]').forEach((c) => c.classList.toggle('on', +c.dataset.chip === v));
-        if (hint) { const need = v * 12 / blendY(RISK.mid.alloc); hint.innerHTML = `لتغطيته تحتاج تستثمر تقريبًا ${money(need, 0)}`; }
+        // الرسالة تظهر فقط إذا ما فيه أي توزيع بحد مخاطر 10% يوصل للمبلغ خلال 12 شهر
+        if (hint) { const ok = reachable(d.savings, v); hint.hidden = ok; hint.textContent = ok ? '' : 'لكي تصل للمبلغ المستهدف يجب زيادة المبلغ أو زيادة المخاطر بعد الموافقة'; }
         save();
       };
       rng.addEventListener('input', () => upd(+rng.value));
@@ -538,82 +678,106 @@
   });
   ACTIONS.ans = (el) => {
     const i = +el.dataset.i, q = QS[i], d = draft();
-    let v = el.dataset.v; if (q.type === 'yn') v = v === 'true'; if (q.type === 'day') v = +v;
+    let v = el.dataset.v; if (q.type === 'yn') v = v === 'true';
     d[q.k] = v; if (q.k === 'hasIncome' && !v) d.pension = 0; if (q.k === 'hasIncome' && v && !d.pension) d.pension = 9000;
     el.parentElement.querySelectorAll('.opt').forEach((o) => o.classList.remove('selected')); el.classList.add('selected');
     later(() => nextQ(i), 220);
   };
   ACTIONS.ansAmt = (el) => nextQ(+el.dataset.i);
-  ACTIONS.typeAmount = (el) => {
+  ACTIONS.autoPick = (el) => { draft().auto = el.dataset.v === '1'; save(); render(); };
+  // تخطي أي سؤال: نستخدم القيمة الافتراضية
+  ACTIONS.skipQ = (el) => {
     const i = +el.dataset.i, q = QS[i], d = draft();
-    openSheet({
-      title: q.title,
-      html: `<div class="input mt8"><input id="ta" type="tel" inputmode="numeric" value="${d[q.k]}" dir="ltr" style="text-align:right"/>${RIYAL}</div><p class="small mt8">من ${fmt(q.min)} إلى ${fmt(q.max)}</p><button class="btn mt16" id="ta-ok">تم</button>`,
-      mount: (sh) => { const inp = sh.querySelector('#ta'); inp.focus(); inp.select(); sh.querySelector('#ta-ok').onclick = () => { d[q.k] = clamp(+digits(inp.value) || q.min, q.min, q.max); save(); closeSheet(true); render(); }; },
-    });
+    if (q.type === 'yn' && d.hasIncome == null) d.hasIncome = true;
+    if (q.type === 'auto' && d.auto == null) d.auto = false;
+    if (q.type === 'risk' && !d.risk) d.risk = 'mid';
+    track('step_skipped'); nextQ(i);
   };
-  ACTIONS.pickDay = (el) => {
-    const i = +el.dataset.i;
+  ACTIONS.typeAmount = (el) => {
+    const i = +el.dataset.i, q = QS[i], d = draft(), key = q.amtKey || q.k;
     openSheet({
-      title: 'اختر يوم الدفعة',
-      html: `<div class="chips" style="justify-content:flex-start">${Array.from({ length: 28 }, (_, k) => `<button class="chip" data-d="${k + 1}" style="min-width:52px">${k + 1}</button>`).join('')}</div>`,
-      mount: (sh) => sh.querySelectorAll('[data-d]').forEach((b) => b.addEventListener('click', () => { draft().payDay = +b.dataset.d; save(); closeSheet(true); nextQ(i); })),
+      title: q.type === 'auto' ? 'المبلغ الشهري المستقطع' : q.title,
+      html: `<div class="input mt8"><input id="ta" type="tel" inputmode="numeric" value="${d[key]}" dir="ltr" style="text-align:right"/>${RIYAL}</div><p class="small mt8">من ${fmt(q.min)} إلى ${fmt(q.max)}</p><button class="btn mt16" id="ta-ok">تم</button>`,
+      mount: (sh) => { const inp = sh.querySelector('#ta'); inp.focus(); inp.select(); sh.querySelector('#ta-ok').onclick = () => { d[key] = clamp(+digits(inp.value) || q.min, q.min, q.max); save(); closeSheet(true); render(); }; },
     });
   };
 
   route('/income/result', {
     auth: true,
     view: () => {
-      const d = draft();
-      if (!d.risk || !d.payDay) { go('/income/q/1', { replace: true }); return null; }
-      const alloc = RISK[d.risk].alloc, p = { mode: 'preset', alloc, balance: d.savings };
-      const inc = income(p), cover = d.target ? inc / d.target * 100 : 100, total = (d.pension || 0) + inc;
-      const need = d.target * 12 / blendY(alloc);
+      if (!S.draft) { go('/income', { replace: true }); return null; }
+      const d = draft(); if (!d.risk) d.risk = 'mid';
+      const A = advise(d.savings, d.target, d.risk, d.over), mix = A.mix;
+      d.advMix = mix; save();
+      const p = { mode: 'auto', mix, balance: d.savings }, monthly = d.auto ? d.autoAmt : 0;
+      const inc = income(p), cover = d.target ? inc / d.target * 100 : 100, full = inc >= d.target - 0.5, total = (d.pension || 0) + inc, L = mixLoss(mix);
+      const need = d.target * 12 / Math.max(mixRate(mix) / 100, 1e-6);
+      let alert = '';
+      if (!A.ok && A.why === 'max') {
+        alert = `<div class="big-warn">${ic('alert')}<div><p>حتى مع تقبّل مخاطر أعلى، أقصى دخل نقدر نوصله ${money(inc, 0)} شهريًا.</p><p class="sm">لتحقيق هدفك (${money(d.target, 0)}) زِد مبلغ الاستثمار إلى ${money(need, 0)} تقريبًا.</p><div class="btns"><button class="btn soft" data-action="backToCap">ارجع لحد المخاطر ${RISK_CAP}%</button></div></div></div>`;
+      } else if (!A.ok) {
+        const why = A.why === 'profile' ? `أنواع الاستثمار المناسبة لوصفك (${RISK[d.risk].name}) ما توصل للدخل المستهدف ضمن حد المخاطر ${RISK_CAP}%.` : `بسبب حد المخاطر ${RISK_CAP}% لم نستطع الوصول للدخل المستهدف.`;
+        alert = `<div class="big-warn">${ic('alert')}<div><p>${why} يجب تقبّل مخاطر أعلى، أو تقبّل أقرب دخل للمطلوب: ${money(inc, 0)} شهريًا.</p><div class="btns"><button class="btn" data-action="acceptOver">تقبّل مخاطر أعلى</button><button class="btn soft" data-action="approvePlan">تقبّل الدخل الأقرب</button></div></div></div>`;
+      } else if (d.over) {
+        alert = `<div class="warn">${ic('alert')}<span>هذي الخطة فيها أنواع استثمار مخاطرها أعلى من وصفك، ومخاطر رأس المال ${fmt(L, 1)}% خلال 12 شهر${L > RISK_CAP ? ` (فوق حد ${RISK_CAP}%)` : ''}${needsAck(mix) ? '، وبنطلب منك توقيع إقرار المخاطر' : ''}. <button class="link" data-action="backToCap">ارجع للخطة ضمن حدودك</button></span></div>`;
+      }
       return `${topbar('خطتك جاهزة', '', '/income')}
-        <div class="donut-wrap">${donut(alloc)}<div class="mid"><small>دخلك الشهري</small><b>${money(inc)}</b><small>تقريبًا</small></div></div>
-        <div class="card"><div class="legend">${KEYS.map((k) => `<div class="li"><i class="sw" style="background:${BASKETS[k].hex}"></i><span class="grow"><b>${BASKETS[k].name}</b> <span class="small">· ${BASKETS[k].sub}</span></span><span class="v">${alloc[k]}%</span></div>`).join('')}</div>
-          <div class="divider"></div><div class="row between"><span class="small">المبلغ المستثمر</span><b>${money(d.savings, 0)}</b></div></div>
+        <div class="res-head"><small>دخلك الشهري المتوقع</small><b>${money(inc)}</b><small>${A.ok ? 'يغطي هدفك بالكامل' : `من هدف ${money(d.target, 0)}`}</small></div>
+        ${alert}
+        <div class="card mt16"><div class="chart-head"><b>قيمة استثمارك خلال 15 سنة</b>${reinvToggle('reinv')}</div><div id="proj" class="mt12">${projHTML(d.savings, mix, monthly)}</div></div>
         <div class="card">
-          <div class="row between"><b>تغطية هدفك (${money(d.target, 0)})</b><b class="${cover >= 100 ? 'pos' : ''}">${fmt(Math.min(cover, 999))}%</b></div>
-          <div class="bar mt12 ${cover >= 100 ? 'green' : ''}"><i style="width:${Math.min(cover, 100)}%"></i></div>
-          <p class="small mt12">${cover >= 100 ? 'خطتك تغطي هدفك الشهري بالكامل.' : `لتغطية هدفك بالكامل تحتاج تستثمر تقريبًا ${money(need, 0)}.`}</p>
+          <div class="row between"><b>تغطية هدفك (${money(d.target, 0)})</b><b class="${full ? 'pos' : ''}">${full ? fmt(Math.min(cover, 999)) : fmt(Math.min(cover, 99.9), 1)}%</b></div>
+          <div class="bar mt12 ${full ? 'green' : ''}"><i style="width:${Math.min(cover, 100)}%"></i></div>
+          <p class="small mt12">${full ? 'خطتك تغطي هدفك الشهري بالكامل.' : `لتغطية هدفك بالكامل بنفس التوزيع تحتاج تستثمر تقريبًا ${money(need, 0)}.`}</p>
         </div>
         <div class="card"><div class="row between"><span>دخلك الكلي مع المعاش</span><b>${money(total, 0)}</b></div>
-          <div class="row between mt8"><span class="small">موعد الدفعة</span><span class="small">يوم ${d.payDay} من كل شهر</span></div>
-          <div class="row between mt8"><span class="small">درجة المخاطر</span><span class="small">${riskLabel(p)}</span></div></div>
-        <p class="small mt12">الأرقام تقديرية بعائد توزيعي توضيحي ${fmt(blendY(alloc) * 100, 1)}% سنويًا قبل رسوم الإدارة، وليست ضمانًا للعائد.</p>
+          <div class="row between mt8"><span class="small">المبلغ المستثمر</span><span class="small">${money(d.savings, 0)}</span></div>
+          <div class="row between mt8"><span class="small">موعد الدفعة</span><span class="small">يوم ${PAY_DAY} من كل شهر</span></div>
+          <div class="row between mt8"><span class="small">الاستقطاع الشهري</span><span class="small">${monthly ? money(monthly, 0) : 'بدون'}</span></div>
+          <div class="row between mt8"><span class="small">مخاطر رأس المال خلال 12 شهر</span><span class="small ${L > RISK_CAP ? 'neg' : ''}">${fmt(L, 1)}% (الحد ${RISK_CAP}%)</span></div></div>
+        <p class="small mt12">الأرقام تقديرية بعائد متوقع توضيحي ${fmt(mixRate(mix), 2)}% سنويًا (توزيعات + نمو) قبل رسوم الإدارة، وليست ضمانًا للعائد.</p>
         <div class="cta-bottom">
           <button class="btn" data-action="approvePlan">اعتماد الخطة</button>
           <button class="btn soft mt12" data-action="designOwn">${ic('pencil')}صمّم خطتك بنفسك</button>
           <button class="link center mt12" style="display:block;width:100%;padding:8px" data-go="/income/q/1">تعديل الإجابات</button>
         </div>`;
     },
+    mount: (root) => bindReinv(root, '#reinv', () => { const d = draft(); root.querySelector('#proj').innerHTML = projHTML(d.savings, d.advMix, d.auto ? d.autoAmt : 0); }),
   });
+  function bindReinv(root, sel, repaint) {
+    const t = root.querySelector(sel); if (!t) return;
+    t.addEventListener('change', () => { REINV = t.checked; track('reinvest_toggle'); repaint(); });
+  }
+  ACTIONS.acceptOver = () => { draft().over = true; track('accept_over'); save(); render(); };
+  ACTIONS.backToCap = () => { draft().over = false; save(); render(); };
   function createPlan(extra, ack) {
     const d = draft();
-    S.plan = Object.assign({ pension: d.pension || 0, savings: d.savings, target: d.target, risk: d.risk, payDay: d.payDay, dest: 'bank', paused: false, ack: !!ack, ackDate: ack ? new Date().toISOString() : null, balance: d.savings, funded: false, createdAt: new Date().toISOString() }, extra);
+    S.plan = Object.assign({ pension: d.pension || 0, savings: d.savings, target: d.target, risk: d.risk, payDay: PAY_DAY, dest: 'bank', paused: false, ack: !!ack, ackDate: ack ? new Date().toISOString() : null, balance: d.savings, funded: false, payLater: false, createdAt: new Date().toISOString() }, extra);
+    S.auto = S.auto || {};
+    if (d.auto) S.auto.sanad = { amount: d.autoAmt, day: PAY_DAY }; else delete S.auto.sanad;
     S.history = []; S.simOffset = 0; track('plan_approved'); save();
     closeSheet(true); go('/deposit/sanad?first=1');
   }
   ACTIONS.approvePlan = () => {
-    const d = draft(), alloc = { ...RISK[d.risk].alloc };
-    if (alloc.gro > ACK_LIMIT) ackSheet(() => createPlan({ mode: 'preset', alloc }, true)); else createPlan({ mode: 'preset', alloc }, false);
+    const d = draft(), mix = { ...(d.advMix || advise(d.savings, d.target, d.risk || 'mid', d.over).mix) }, L = mixLoss(mix);
+    const done = () => createPlan({ mode: 'auto', mix }, needsAck(mix));
+    if (needsAck(mix)) ackSheet(done, L > RISK_CAP ? 'over' : 'custom', L > RISK_CAP ? L : highShare({ mode: 'custom', mix })); else done();
   };
-  ACTIONS.designOwn = () => { S.mixDraft = presetToMix(RISK[draft().risk].alloc); save(); track('custom_start'); go('/income/custom'); };
+  ACTIONS.designOwn = () => { const d = draft(); S.mixDraft = { ...(d.advMix || advise(d.savings, d.target, d.risk || 'mid', d.over).mix) }; save(); track('custom_start'); go('/income/custom'); };
 
   function ackSheet(onOk, kind = 'growth', share = 0) {
-    const custom = kind === 'custom';
-    const over = custom && share > 30;
+    const custom = kind !== 'growth';
+    const over = kind === 'over' || (custom && share > 30);
     openSheet({
       title: 'إقرار المخاطر',
       html: `<div class="success-ic" style="background:#FFF4E5;color:#B7791F">${ic('alert')}</div>
-        <p class="sub mb16 center">${custom ? `خطتك فيها محافظ مخاطرها أعلى بنسبة ${share}%.` : `سلة النمو فوق ${ACK_LIMIT}% تعني مخاطر أعلى.`} قبل المتابعة، اقرأ النقاط التالية:</p>
+        <p class="sub mb16 center">${kind === 'over' ? `أقصى انخفاض متوقع لخطتك خلال 12 شهر ${fmt(share, 1)}%، وهذا أعلى من الحد ${RISK_CAP}%.` : custom ? `خطتك فيها محافظ مخاطرها أعلى بنسبة ${share}%.` : `سلة النمو فوق ${ACK_LIMIT}% تعني مخاطر أعلى.`} قبل المتابعة، اقرأ النقاط التالية:</p>
         <ul class="checks" style="margin:0 0 16px">
           <li style="align-items:flex-start">${ic('check')}<span>${custom ? 'محافظ الأسهم والمتنوعة (نمو) والمستقبل قيمتها قد تنخفض بشكل كبير' : 'قيمة الأسهم وصناديق الريت قد تنخفض'}، والدفعة الشهرية قد تتغير.</span></li>
           <li style="align-items:flex-start">${ic('check')}<span>${custom ? 'نوصي المتقاعد ألا تتجاوز المحافظ عالية المخاطر 30% من خطته.' : 'الحد الأعلى لسلة النمو 30% من الخطة لحمايتك.'}</span></li>
           <li style="align-items:flex-start">${ic('check')}<span>رسوم إدارة الجزء عالي المخاطر أعلى (${fmt(FEE.growthHigh * 100, 1)}% سنويًا بدل ${fmt(FEE.base * 100, 1)}%).</span></li>
         </ul>
-        <div class="card mb16"><div class="row between"><span class="small">تقييم الملاءمة</span><b class="${over ? '' : 'pos'}" style="${over ? 'color:#B7791F' : ''}">${over ? 'أعلى من الموصى به' : 'مناسب'}</b></div><p class="small mt8">${over ? 'نسبة المحافظ عالية المخاطر أعلى من 30%، فكّر في تخفيضها لحماية دخلك.' : 'مدة استثمار طويلة، ومعاش منتظم يغطي المصاريف الأساسية.'}</p></div>
+        <div class="card mb16"><div class="row between"><span class="small">تقييم الملاءمة</span><b class="${over ? '' : 'pos'}" style="${over ? 'color:#B7791F' : ''}">${over ? 'أعلى من الموصى به' : 'مناسب'}</b></div><p class="small mt8">${kind === 'over' ? `تجاوزت حد المخاطر ${RISK_CAP}% للوصول لدخلك المستهدف، ورأس مالك معرّض لانخفاض أكبر.` : over ? 'نسبة المحافظ عالية المخاطر أعلى من 30%، فكّر في تخفيضها لحماية دخلك.' : 'مدة استثمار طويلة، ومعاش منتظم يغطي المصاريف الأساسية.'}</p></div>
         <label class="check"><input type="checkbox" id="ack"/><span>أقر بأنني اطلعت على المخاطر والرسوم، وأرغب في المتابعة.</span></label>
         <button class="btn mt16" id="ack-ok" disabled>توقيع الإقرار والمتابعة</button>`,
       mount: (sh) => { const c = sh.querySelector('#ack'), b = sh.querySelector('#ack-ok'); c.addEventListener('change', () => (b.disabled = !c.checked)); b.addEventListener('click', () => { track('ack_signed'); onOk(); }); },
@@ -628,12 +792,13 @@
       const fromEdit = q.get('from') === 'edit';
       if (fromEdit && !S.plan) { go('/income', { replace: true }); return null; }
       if (!fromEdit && (!S.draft || !S.draft.risk)) { go('/income/q/1', { replace: true }); return null; }
-      if (!S.mixDraft) S.mixDraft = presetToMix(fromEdit ? (S.plan.alloc || RISK.mid.alloc) : RISK[S.draft.risk].alloc);
+      if (!S.mixDraft) S.mixDraft = { ...(fromEdit ? planMix(S.plan) : (S.draft.advMix || advise(S.draft.savings, S.draft.target, S.draft.risk, false).mix)) };
       return `${topbar('صمّم خطتك بنفسك', '', fromEdit ? '/plan/edit' : '/income/result')}
         <p class="sub">اختر أنواع المحافظ اللي تبيها في محفظة تقاعدك، وحدد وزن كل نوع. لازم يكون المجموع 100%.</p>
         <div class="card mt16"><div class="row between"><b>توزيع محفظتك</b><b id="mx-sum"></b></div><div id="mx-bar" class="mt12"></div>
           <div class="chips" style="justify-content:flex-start;margin-top:14px"><button class="chip" data-mx="equal">وزّع بالتساوي</button><button class="chip" data-mx="reset">ارجع للخطة المقترحة</button><button class="chip" data-mx="clear">ابدأ من الصفر</button></div></div>
-        <div class="mix-list mt16">${MIX_ORDER.map((id) => { const p = PORTS[id]; return `<div class="mix-row" data-id="${id}">${iconCircle(p)}<div class="grow"><b>${p.name}${HIGH_RISK.includes(id) ? ' <span class="badge-warn">مخاطر أعلى</span>' : ''}</b><small>عائد توزيعي ${fmt(p.dy, 1)}% · مخاطر ${p.risk}</small></div><div class="stepper"><button data-step="5" aria-label="زيادة">${ic('plus')}</button><span class="w"></span><button data-step="-5" aria-label="تقليل"><svg class="ic" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button></div></div>`; }).join('')}</div>
+        <div class="card mt16"><div class="chart-head"><b>قيمة استثمارك خلال 15 سنة</b>${reinvToggle('mx-reinv')}</div><div id="mx-proj" class="mt12"></div></div>
+        <div class="mix-list mt16">${MIX_ORDER.map((id) => { const p = PORTS[id]; return `<div class="mix-row" data-id="${id}">${iconCircle(p)}<div class="grow"><b>${p.name}${HIGH_RISK.includes(id) ? ' <span class="badge-warn">مخاطر أعلى</span>' : ''}</b><small>عائد متوقع ${fmt(p.rate, 1)}% · انخفاض محتمل ${fmt(ADV[id].loss, 1)}%</small></div><div class="stepper"><button data-step="5" aria-label="زيادة">${ic('plus')}</button><span class="w"></span><button data-step="-5" aria-label="تقليل"><svg class="ic" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button></div></div>`; }).join('')}</div>
         <div class="preview">
           <div class="row between"><span>دخلك الشهري المتوقع</span><b id="mx-inc"></b></div>
           <div class="row between mt8 small"><span>درجة المخاطر</span><span id="mx-risk"></span></div>
@@ -644,8 +809,11 @@
     mount: (root, _, q) => {
       const fromEdit = q.get('from') === 'edit', B = S.mixDraft, $ = (s) => root.querySelector(s);
       const bal = fromEdit ? S.plan.balance : S.draft.savings;
+      const monthly = fromEdit ? ((S.auto && S.auto.sanad && S.auto.sanad.amount) || 0) : (S.draft.auto ? S.draft.autoAmt : 0);
       const sum = () => MIX_ORDER.reduce((s, id) => s + (B[id] || 0), 0);
       const pseudo = () => ({ mode: 'custom', mix: B, balance: bal });
+      const paintProj = () => { $('#mx-proj').innerHTML = sum() === 100 ? projHTML(bal, cleanMix(B), monthly) : '<p class="small center" style="padding:24px 0">أكمل التوزيع إلى 100% عشان يظهر الرسم</p>'; };
+      bindReinv(root, '#mx-reinv', paintProj);
       const paint = () => {
         const t = sum(), pp = pseudo();
         root.querySelectorAll('.mix-row').forEach((r) => { const w = B[r.dataset.id] || 0; r.querySelector('.w').textContent = w + '%'; r.classList.toggle('on', w > 0); });
@@ -653,8 +821,9 @@
         $('#mx-sum').textContent = `المجموع ${t}%`; $('#mx-sum').className = t === 100 ? 'pos' : 'neg';
         $('#mx-inc').innerHTML = money(income(pp, {}, bal));
         $('#mx-risk').textContent = t ? riskLabel(pp) : '—';
-        const h = highShare(pp);
-        const msg = t !== 100 ? (t > 100 ? 'المجموع أكثر من 100%، قلّل بعض الأوزان.' : `باقي ${100 - t}% توزعه على المحافظ.`) : h > 30 ? `المحافظ عالية المخاطر ${h}% من خطتك، والموصى به للمتقاعد ألا تتجاوز 30%.` : h > 0 ? 'خطتك فيها محافظ عالية المخاطر، وبنطلب منك توقيع إقرار.' : '';
+        paintProj();
+        const h = highShare(pp), L = mixLoss(B);
+        const msg = t !== 100 ? (t > 100 ? 'المجموع أكثر من 100%، قلّل بعض الأوزان.' : `باقي ${100 - t}% توزعه على المحافظ.`) : L > RISK_CAP ? `مخاطر رأس المال ${fmt(L, 1)}% خلال 12 شهر، أعلى من الحد ${RISK_CAP}%، وبنطلب منك توقيع إقرار.` : h > 30 ? `المحافظ عالية المخاطر ${h}% من خطتك، والموصى به للمتقاعد ألا تتجاوز 30%.` : h > 0 ? 'خطتك فيها محافظ عالية المخاطر، وبنطلب منك توقيع إقرار.' : '';
         $('#mx-warn').hidden = !msg; $('#mx-warn-t').textContent = msg;
         $('#mx-ok').disabled = t !== 100;
         save();
@@ -667,7 +836,7 @@
       root.querySelectorAll('[data-mx]').forEach((b) => b.addEventListener('click', () => {
         const k = b.dataset.mx;
         if (k === 'clear') MIX_ORDER.forEach((id) => (B[id] = 0));
-        if (k === 'reset') { const m = presetToMix(fromEdit ? (S.plan.alloc || RISK.mid.alloc) : RISK[S.draft.risk].alloc); MIX_ORDER.forEach((id) => (B[id] = m[id] || 0)); }
+        if (k === 'reset') { const m = fromEdit ? planMix(S.plan) : (S.draft.advMix || {}); MIX_ORDER.forEach((id) => (B[id] = m[id] || 0)); }
         if (k === 'equal') {
           let ids = MIX_ORDER.filter((id) => B[id] > 0); if (!ids.length) ids = ['saving', 'corp-sukuk', 'dividends', 'reit'];
           const base = Math.floor(100 / ids.length / 5) * 5; let rest = 100 - base * ids.length;
@@ -677,14 +846,15 @@
       }));
       $('#mx-ok').addEventListener('click', () => {
         const mix = {}; MIX_ORDER.forEach((id) => { if (B[id] > 0) mix[id] = B[id]; });
-        const h = highShare({ mode: 'custom', mix });
+        const h = highShare({ mode: 'custom', mix }), L = mixLoss(mix), need = needsAck(mix);
         const done = () => {
           if (fromEdit) {
-            Object.assign(S.plan, { mode: 'custom', mix }); if (h > 0) { S.plan.ack = true; S.plan.ackDate = new Date().toISOString(); }
-            S.mixDraft = null; track('plan_edit_saved'); save(); closeSheet(true); go('/payments', { replace: true }); toast('تم تحديث محفظة تقاعدك');
-          } else { S.mixDraft = null; createPlan({ mode: 'custom', mix, risk: 'custom' }, h > 0); }
+            Object.assign(S.plan, { mode: 'custom', mix }); if (need) { S.plan.ack = true; S.plan.ackDate = new Date().toISOString(); }
+            S.mixDraft = null; track('plan_edit_saved'); save(); closeSheet(true); go(S.plan.funded ? '/payments' : '/home', { replace: true }); toast('تم تحديث محفظة تقاعدك');
+          } else { S.mixDraft = null; createPlan({ mode: 'custom', mix, risk: 'custom' }, need); }
         };
-        if (h > 0 && !(fromEdit && S.plan.ack && highShare(S.plan) >= h)) ackSheet(done, 'custom', h); else done();
+        const covered = fromEdit && S.plan.ack && (S.plan.mode || 'preset') !== 'preset' && highShare(S.plan) >= h && mixLoss(S.plan.mix || {}) >= L;
+        if (need && !covered) ackSheet(done, L > RISK_CAP ? 'over' : 'custom', L > RISK_CAP ? L : h); else done();
       });
       paint();
     },
@@ -716,28 +886,75 @@
     return `<h3 class="h3 mt24">محافظك الأخرى</h3>${S.portfolios.map((x) => { const p = PORTS[x.id]; return `<button class="mini-pf" data-go="/portfolio/${x.id}">${iconCircle(p)}<div class="grow"><b>محفظة ${p.name}</b><small>${money(x.balance)}</small></div>${ic('chevL')}</button>`; }).join('')}`;
   }
 
+  /* ===== اقتراحات لتحسين المحفظة ===== */
+  let BEST_MIX = null;
+  function suggestions(p) {
+    const out = [], mix = planMix(p), bal = p.funded ? p.balance : p.savings, pp = { ...p, balance: bal };
+    const inc = income(pp), L = mixLoss(mix), Y = mixRate(mix) / 100, auto = S.auto && S.auto.sanad;
+    if (p.target && inc < p.target - 0.5) {
+      const need = Math.max(0, p.target * 12 / Math.max(Y, 1e-6) - bal);
+      out.push({ ic: 'target', t: 'دخلك المتوقع أقل من هدفك', d: `ينقصك ${money(p.target - inc, 0)} شهريًا. أضف ${money(need, 0)} تقريبًا لخطتك، أو تقبّل مخاطر أعلى.`, l: 'إضافة مبلغ', a: 'data-go="/deposit/sanad"' });
+    }
+    if (L > RISK_CAP) out.push({ ic: 'alert', t: 'مخاطر محفظتك أعلى من الحد', d: `أقصى انخفاض متوقع ${fmt(L, 1)}% خلال 12 شهر، والحد الموصى ${RISK_CAP}%. خفّف أوزان المحافظ عالية المخاطر.`, l: 'تعديل الأوزان', a: 'data-action="editMix"' });
+    BEST_MIX = edge(ADV_ALL, (m) => mixLoss(m) <= Math.max(L, 0.5) + 1e-9, 0);
+    if (BEST_MIX && mixRate(BEST_MIX) - mixRate(mix) > 0.1) {
+      out.push({ ic: 'trend', t: 'دخل أعلى بنفس المخاطر', d: `بتوزيع مختلف تقدر ترفع دخلك إلى ${money(bal * mixRate(BEST_MIX) / 100 / 12, 0)} شهريًا بدون ما تزيد مخاطرك (${fmt(L, 1)}%).`, l: 'شوف التوزيع المقترح', a: 'data-action="tryBest"' });
+    }
+    if ((mix.saving || 0) < 10) out.push({ ic: 'wallet', t: 'ارفع السيولة للطوارئ', d: 'نوصي إن 10% على الأقل من خطتك تكون في الادخار عشان تغطي أي مصروف مفاجئ بدون ما تبيع وقت النزول.', l: 'تعديل الأوزان', a: 'data-action="editMix"' });
+    if (!auto) {
+      const pr = project(bal, Y, 1000);
+      out.push({ ic: 'repeat', t: 'فعّل الاستقطاع الشهري', d: `استقطاع ${money(1000, 0)} شهريًا يرفع قيمة محفظتك بعد 15 سنة إلى ${money(pr.val[15], 0)} تقريبًا، ويكبر دخلك مع الوقت.`, l: 'تفعيل الاستقطاع', a: 'data-action="autoDep" data-id="sanad"' });
+    }
+    if (p.funded && p.dest === 'bank' && p.target && inc > p.target * 1.05) out.push({ ic: 'refresh', t: 'دخلك أعلى من هدفك', d: `عندك فائض ${money(inc - p.target, 0)} شهريًا. تقدر تعيد استثماره عشان تكبر خطتك.`, l: 'تعديل الخطة', a: 'data-go="/plan/edit"' });
+    out.push({ ic: 'landmark', t: 'فرصة صكوك شركات', d: `صكوك بعائد ثابت يصل إلى ${fmt(Math.max(...SUKUK.map((o) => o.rate)), 1)}% وتوزيعات دورية، مخاطرها منخفضة وتناسب دخل التقاعد.`, l: 'استعرض الفرص', a: 'data-go="/portfolio/corp-sukuk"' });
+    return out.slice(0, 3);
+  }
+  ACTIONS.tryBest = () => { if (!BEST_MIX || !S.plan) return; S.mixDraft = cleanMix(BEST_MIX); save(); track('suggestion_best'); go('/income/custom?from=edit'); };
+
+  /* ===== مقارنة مع المشابهين: العمر والمبلغ ونوع المخاطر (أداء توضيحي لآخر 12 شهر) ===== */
+  function benchmarkCard(p) {
+    const mix = planMix(p), bal = p.funded ? p.balance : p.savings, L = mixLoss(mix);
+    const band = RISK[p.risk] ? p.risk : L <= 5 ? 'low' : L <= RISK_CAP ? 'mid' : 'high';
+    const peer = { low: [5.4, 0.0012], mid: [6.3, 0.0022], high: [7.2, 0.0045] }[band];
+    const amt = bal < 250000 ? 'أقل من 250 ألف' : bal < 1000000 ? 'من 250 ألف إلى مليون' : 'أكثر من مليون';
+    const key = MIX_ORDER.filter((id) => mix[id]).map((id) => id + mix[id]).join('');
+    const norm = (v) => { const s = v.slice(-253); return s.filter((_, i) => i % 21 === 0).map((x) => x / s[0] * 100); };
+    const me = norm(series('me-' + key, mixRate(mix), 0.001 + L / 100 * 0.025)), pe = norm(series('peer-' + band, peer[0], peer[1]));
+    const r1 = me[me.length - 1] - 100, r2 = pe[pe.length - 1] - 100, diff = r1 - r2;
+    const pct = (v) => `<span dir="ltr">${v >= 0 ? '+' : ''}${fmt(v, 1)}%</span>`;
+    return `<h3 class="h3 mt24">مقارنتك مع المشابهين لك</h3>
+      <div class="card"><div class="peer-tags"><span class="tag">العمر 60–65</span><span class="tag">المبلغ ${amt}</span><span class="tag">مخاطر ${RISK[band].name}</span></div>
+        <div class="mt12">${lineChart([{ pts: pe, color: '#9AA3B2', dash: true, label: 'متوسط المشابهين لك (البنش مارك)' }, { pts: me, color: '#3A47E6', label: 'محفظتك' }], [[0, 'قبل سنة'], [6, 'قبل 6 أشهر'], [12, 'الآن']], { yFmt: (v) => `${v >= 100 ? '+' : ''}${fmt(v - 100, 1)}%`, label: 'أداء محفظتك مقابل المشابهين', h: 190 })}</div>
+        <div class="row between mt12"><span class="small">محفظتك</span><b class="${r1 >= 0 ? 'pos' : 'neg'}">${pct(r1)}</b></div>
+        <div class="row between mt8"><span class="small">متوسط المشابهين</span><b>${pct(r2)}</b></div>
+        <p class="small mt8">${diff >= 0 ? `محفظتك أفضل من متوسط المشابهين لك بـ ${fmt(diff, 1)}% خلال آخر 12 شهر.` : `محفظتك أقل من متوسط المشابهين لك بـ ${fmt(Math.abs(diff), 1)}% خلال آخر 12 شهر. شوف الاقتراحات فوق.`} أرقام توضيحية.</p></div>`;
+  }
+
   route('/home', {
     auth: true, nav: 'home',
     view: () => {
       const p = S.plan, u = S.user;
-      const head = `<div class="greet"><div><div class="hi">مرحبًا،</div><div class="nm">${esc(u.name)}</div></div><button class="pill-btn" data-go="/manage">${ic('pencil')}إدارة</button></div>`;
+      const hi = u.name ? 'مرحبًا،' : 'مرحبًا بك في', nm = u.name ? esc(u.name) : 'سند';
+      const head = `<div class="greet"><div><div class="hi">${hi}</div><div class="nm">${nm}</div></div><button class="pill-btn" data-go="/manage">${ic('pencil')}إدارة</button></div>`;
+      const guest = u.guest ? `<div class="info-box mb16">${ic('user')}<span>أنت تتصفح كزائر. <button class="link" data-go="/register">أنشئ حسابك</button> عشان تحفظ خطتك.</span></div>` : '';
       if (!p) {
-        return `${head}<div class="card empty-plan"><div class="icon-circle lg" style="margin:0 auto 14px">${ic('target')}</div><h3 class="h2">ابدأ خطة دخلك الشهري</h3><p class="sub">أجب على 6 أسئلة بسيطة، ونبني لك خطة السلال الثلاث.</p><button class="btn mt16" data-go="/income">إعداد الدخل</button></div>
+        return `${head}${guest}<div class="card empty-plan"><div class="icon-circle lg" style="margin:0 auto 14px">${ic('target')}</div><h3 class="h2">ابدأ خطة دخلك الشهري</h3><p class="sub">أجب على أسئلة بسيطة (تقدر تتخطاها)، والمستشار الآلي يبني لك خطة توصلك لهدفك.</p><button class="btn mt16" data-go="/income">إعداد الدخل</button></div>
           ${otherPortfolios()}<button class="btn tint mt16" data-go="/create">${ic('plus')}إنشاء محفظة</button>`;
       }
-      if (!p.funded) {
-        return `${head}<div class="card empty-plan"><div class="icon-circle lg solid" style="margin:0 auto 14px;border-radius:50%">${ic('shield')}</div><h3 class="h2">خطتك جاهزة</h3><p class="sub">موّل خطتك عشان تبدأ دفعاتك الشهرية.</p><button class="btn mt16" data-go="/deposit/sanad?first=1">${ic('plus')}إيداع وتفعيل الخطة</button><button class="btn soft mt12" data-go="/plan/edit">تعديل الخطة</button></div>${otherPortfolios()}`;
-      }
-      const inc = p.paused ? 0 : income(p), nd = nextPayDate(p.payDay);
-      return `${head}
-        <div class="pf-head"><div class="icon-circle lg solid" style="border-radius:50%">${ic('shield')}</div><div><div class="name">محفظة التقاعد${p.mode === 'custom' ? ' <span class="badge-soft">من تصميمك</span>' : ''}</div><a class="link" data-go="/stats/sanad">احصائيات الخطة ${ic('chevL')}</a></div></div>
-        <div class="pf-hero">${p.paused ? 'دفعاتك متوقفة مؤقتًا' : 'دفعتك القادمة في الطريق!'}</div>
-        <p class="pf-text">${p.paused ? 'تقدر تعيد تشغيل الدفعات من تعديل الخطة.' : `تستلم ${money(inc)} يوم ${fmtDate(nd)} ${p.dest === 'bank' ? 'في حسابك البنكي' : 'ويُعاد استثمارها في خطتك'}.`}</p>
-        <button class="btn" data-go="/payments">${ic('calendar')}عرض الدفعات</button>
-        <div class="hold-card">${comps(p).map((c) => `<div class="hold"><span class="pct">${c.w}%</span><span class="nm">${c.name}<div class="small">${c.sub}</div></span><span class="tk">${c.tk}</span>${ring(c.w, c.hex)}</div>`).join('')}</div>
-        <div class="kv"><span>رصيد الخطة</span><b>${money(p.balance)}</b></div>
-        <div class="kv"><span>درجة المخاطر</span><b>${riskLabel(p)}</b></div>
-        <div class="plan-cta"><p style="margin:4px 0 14px;font-size:17px">تبي تغيّر دخلك أو توزيع ${p.mode === 'custom' ? 'محفظتك' : 'السلال'}؟</p><button class="btn tint" data-go="/plan/edit">${ic('pencil')}تعديل الخطة</button><p class="small" style="margin:12px 0 0">${ic('gift')} أضف مبلغ لخطتك وارفع دفعتك الشهرية</p></div>
+      const bal = p.funded ? p.balance : p.savings, inc = p.paused ? 0 : income({ ...p, balance: bal }), nd = nextPayDate(PAY_DAY);
+      const top = p.funded
+        ? `<div class="pf-hero">${p.paused ? 'دفعاتك متوقفة مؤقتًا' : 'دفعتك القادمة في الطريق!'}</div>
+          <p class="pf-text">${p.paused ? 'تقدر تعيد تشغيل الدفعات من تعديل الخطة.' : `تستلم ${money(inc)} يوم ${fmtDate(nd)} ${p.dest === 'bank' ? 'في حسابك البنكي' : 'ويُعاد استثمارها في خطتك'}.`}</p>
+          <button class="btn" data-go="/payments">${ic('calendar')}عرض الدفعات</button>`
+        : `<div class="pf-hero">خطتك بانتظار السداد</div>
+          <p class="pf-text">${p.payLater ? 'اخترت السداد لاحقًا. ' : ''}موّل خطتك عشان تبدأ تستلم ${money(inc)} يوم ${PAY_DAY} من كل شهر.</p>
+          <button class="btn" data-go="/deposit/sanad?first=1">${ic('plus')}إيداع وتفعيل الخطة</button><button class="btn soft mt12" data-go="/plan/edit">${ic('pencil')}تعديل الخطة</button>`;
+      return `${head}${guest}
+        <div class="pf-head"><div class="icon-circle lg solid" style="border-radius:50%">${ic('shield')}</div><div><div class="name">محفظة التقاعد <span class="badge-soft">${modeBadge(p)}</span></div>${p.funded ? `<a class="link" data-go="/stats/sanad">احصائيات الخطة ${ic('chevL')}</a>` : '<span class="small">بانتظار السداد</span>'}</div></div>
+        ${top}
+        <h3 class="h3 mt24">اقتراحات لتحسين محفظتك</h3>
+        ${suggestions(p).map((s) => `<div class="sugg"><div class="icon-circle">${ic(s.ic)}</div><div class="grow"><b>${s.t}</b><p>${s.d}</p><button class="link" ${s.a}>${s.l} ${ic('chevL')}</button></div></div>`).join('')}
+        ${benchmarkCard(p)}
         ${otherPortfolios()}
         <button class="btn soft mt16" data-go="/create">${ic('plus')}إنشاء محفظة</button>
         ${moreSection(SANAD_FAQ)}`;
@@ -794,9 +1011,10 @@
       const p = S.plan;
       if (!p) { go('/income', { replace: true }); return null; }
       const preset = (p.mode || 'preset') === 'preset';
-      E = { target: p.target, alloc: preset ? { ...p.alloc } : null, payDay: p.payDay, dest: p.dest, paused: p.paused };
-      const days = [1, 5, 10, 15, 20, 25, 27];
-      const customCard = `<div class="card"><div class="row between"><h3 class="h3" style="margin:0">توزيع محفظتك</h3><span class="badge-soft">من تصميمك</span></div><div class="mt12">${mixBar(p.mix || {})}</div>
+      E = { target: p.target, alloc: preset ? { ...p.alloc } : null, payDay: PAY_DAY, dest: p.dest, paused: p.paused };
+      const au = S.auto && S.auto.sanad;
+      const customCard = `<div class="card"><div class="row between"><h3 class="h3" style="margin:0">توزيع محفظتك</h3><span class="badge-soft">${modeBadge(p)}</span></div><div class="mt12">${mixBar(p.mix || {})}</div>
+          <div class="row between mt12 small"><span>مخاطر رأس المال خلال 12 شهر</span><span class="${mixLoss(p.mix || {}) > RISK_CAP ? 'neg' : ''}">${fmt(mixLoss(p.mix || {}), 1)}% (الحد ${RISK_CAP}%)</span></div>
           <div class="legend mt16">${comps(p).map((c) => `<div class="li"><i class="sw" style="background:${c.hex}"></i><span class="grow">${c.name}</span><span class="v">${c.w}%</span></div>`).join('')}</div>
           <button class="btn tint mt16" data-action="editMix">${ic('pencil')}تعديل الأنواع والأوزان</button></div>`;
       return `${topbar('تعديل الخطة', '', '/home')}
@@ -809,7 +1027,8 @@
           <div class="warn mt8" id="ack-warn" hidden>${ic('alert')}<span>رفع سلة النمو فوق ${ACK_LIMIT}% يتطلب توقيع إقرار المخاطر، ورسوم إدارتها أعلى.</span></div>
           <button class="btn soft mt12" data-action="editMix">${ic('pencil')}صمّم خطتك بنفسك</button>
         </div>` : customCard}
-        <div class="card"><h3 class="h3">يوم استلام الدفعة</h3><div class="chips" style="justify-content:flex-start">${days.map((d) => `<button class="chip ${d === E.payDay ? 'on' : ''}" data-day="${d}">يوم ${d}</button>`).join('')}</div></div>
+        <div class="card row between"><div><b>يوم استلام الدفعة</b><div class="small">ثابت لكل الخطط</div></div><b>يوم ${PAY_DAY} من كل شهر</b></div>
+        <button class="pick-row mt16" data-action="autoDep" data-id="sanad">${ic('repeat')}<span class="grow">الاستقطاع الشهري<div class="small">${au ? `${money(au.amount, 0)} يوم ${PAY_DAY} من كل شهر` : 'غير مفعّل'}</div></span>${ic('chevL')}</button>
         <div class="card"><h3 class="h3">وجهة الدفعة</h3>
           <button class="pick-row ${E.dest === 'bank' ? 'selected' : ''}" data-dest="bank" style="background:#fff">${ic('bank')}<span class="grow">حسابي البنكي<div class="small">تُحوّل لحسابك كل شهر</div></span></button>
           <button class="pick-row ${E.dest === 'reinvest' ? 'selected' : ''}" data-dest="reinvest" style="background:#fff">${ic('refresh')}<span class="grow">إعادة الاستثمار<div class="small">تُضاف لرصيد خطتك وتكبر دفعاتك</div></span></button></div>
@@ -844,14 +1063,13 @@
       };
       $('#tg').addEventListener('input', (e) => { E.target = +e.target.value; paint(); });
       if (preset) ['liq', 'gro'].forEach((k) => $('#r-' + k).addEventListener('input', (e) => { E.alloc[k] = +e.target.value; sync(k); paint(); }));
-      root.querySelectorAll('[data-day]').forEach((b) => b.addEventListener('click', () => { E.payDay = +b.dataset.day; root.querySelectorAll('[data-day]').forEach((x) => x.classList.toggle('on', x === b)); paint(); }));
       root.querySelectorAll('[data-dest]').forEach((b) => b.addEventListener('click', () => { E.dest = b.dataset.dest; root.querySelectorAll('[data-dest]').forEach((x) => x.classList.toggle('selected', x === b)); paint(); }));
       $('#pause').addEventListener('change', (e) => { E.paused = e.target.checked; paint(); });
       $('#save-plan').addEventListener('click', () => {
         const apply = () => {
-          Object.assign(p, { target: E.target, payDay: E.payDay, dest: E.dest, paused: E.paused });
+          Object.assign(p, { target: E.target, payDay: PAY_DAY, dest: E.dest, paused: E.paused });
           if (preset) { p.alloc = { ...E.alloc }; if (E.alloc.gro > ACK_LIMIT) p.ack = true; }
-          track('plan_edit_saved'); save(); closeSheet(true); go('/payments', { replace: true }); toast('تم تحديث خطتك');
+          track('plan_edit_saved'); save(); closeSheet(true); go(p.funded ? '/payments' : '/home', { replace: true }); toast('تم تحديث خطتك');
         };
         if (preset && E.alloc.gro > ACK_LIMIT && !p.ack) ackSheet(() => { p.ackDate = new Date().toISOString(); apply(); }); else apply();
       });
@@ -859,7 +1077,7 @@
     },
   });
 
-  ACTIONS.editMix = () => { const p = S.plan; S.mixDraft = p.mode === 'custom' ? { ...p.mix } : presetToMix(p.alloc); save(); go('/income/custom?from=edit'); };
+  ACTIONS.editMix = () => { const p = S.plan; if (!p) return; S.mixDraft = { ...planMix(p) }; save(); go('/income/custom?from=edit'); };
 
   /* ================= الخدمات ================= */
   route('/services', {
@@ -994,7 +1212,7 @@
         const received = S.history.reduce((s, h) => s + h.amount, 0);
         return `${topbar('احصائيات الخطة')}
           <div class="card"><div class="row between"><span>رصيد الخطة</span><b>${money(p.balance)}</b></div><div class="row between mt8"><span class="small">إجمالي الدفعات المستلمة</span><span class="small">${money(received)}</span></div><div class="row between mt8"><span class="small">العائد التوزيعي السنوي</span><span class="small pos">${fmt(planY(p) * 100, 2)}%</span></div><div class="row between mt8"><span class="small">بداية الخطة</span><span class="small">${fmtDate(new Date(p.createdAt))}</span></div></div>
-          <div class="card"><h3 class="h3">قيمة كل ${p.mode === 'custom' ? 'محفظة' : 'سلة'}</h3>${comps(p).map((c) => `<div class="mt12"><div class="row between"><span>${c.name}</span><b>${money(p.balance * c.w / 100, 0)}</b></div><div class="bar mt8"><i style="width:${c.w}%;background:${c.hex}"></i></div></div>`).join('')}</div>
+          <div class="card"><h3 class="h3">قيمة كل ${(p.mode || 'preset') !== 'preset' ? 'محفظة' : 'سلة'}</h3>${comps(p).map((c) => `<div class="mt12"><div class="row between"><span>${c.name}</span><b>${money(p.balance * c.w / 100, 0)}</b></div><div class="bar mt8"><i style="width:${c.w}%;background:${c.hex}"></i></div></div>`).join('')}</div>
           <div id="hist-wrap">${histCard('sanad-' + comps(p).map((c) => c.k + c.w).join(''), 'محفظة التقاعد', planTR(p) * 100, 0.002 + highShare(p) / 100 * 0.02)}</div>`;
       }
       const p = PORTS[id]; if (!p || p.rate == null) { go('/create', { replace: true }); return null; }
@@ -1025,7 +1243,10 @@
         <div class="big-val mt24" id="c-val"></div><div class="gain" id="c-gain"></div>
         <div class="chart-box" id="c-chart"><div id="c-svg"></div><div class="tip" id="c-tip"><span class="yr" id="t-yr"></span><span class="a"><span>مع الاستثمار</span><b id="t-a"></b></span><span class="b"><span>بدون استثمار</span><b id="t-b"></b></span></div></div>
         <div class="axis">${['سنة', '5 سنين', '10 سنة', '15 سنة', '20 سنة'].map((x) => `<span>${x}</span>`).join('')}</div>
+        <div class="lc-legend" id="c-legend"></div>
         ${sliders}
+        <div class="card row between mt16"><div><b>إعادة استثمار التوزيعات</b><div class="small">عائد توزيعي ${fmt(p.dy, 1)}% سنويًا من أصل ${fmt(p.rate, 1)}%</div></div><label class="toggle"><input type="checkbox" id="c-reinv" ${REINV ? 'checked' : ''} aria-label="إعادة استثمار التوزيعات"/><span></span></label></div>
+        <p class="small mt8" id="c-note" style="line-height:1.8"></p>
         <div class="info-box mt24">${ic('trend')}<span>التوقعات قد لا تعكس بدقة الأداء المستقبلي، كونها تعتمد على تحليل الأداء التاريخي للمحفظة الموضّح أدناه</span></div>
         <div id="hist-wrap">${histCard(C.pf, p.name, p.rate, p.vol)}</div>`;
     },
@@ -1044,15 +1265,21 @@
         };
       } else {
         const W = 400, H = 240;
+        // بدون إعادة الاستثمار: القيمة تنمو بعائد النمو فقط (العائد الكلي − التوزيعات) والتوزيعات تُصرف لك
+        const gNo = Math.max(0, p.rate - p.dy);
+        const paid = (months) => { const r = gNo / 100 / 12; let v = C.init, s = 0; for (let i = 0; i < months; i++) { s += v * p.dy / 100 / 12; v = v * (1 + r) + C.monthly; } return s; };
+        $('#c-reinv').addEventListener('change', (e) => { REINV = e.target.checked; track('reinvest_toggle'); paint(); });
         paint = () => {
-          const pts = [], base = [];
-          for (let m = 0; m <= 240; m += 3) { pts.push(fv(C.init, C.monthly, p.rate, m)); base.push(C.init + C.monthly * m); }
+          const pts = [], base = [], alt = [], rMain = REINV ? p.rate : gNo;
+          for (let m = 0; m <= 240; m += 3) { pts.push(fv(C.init, C.monthly, rMain, m)); base.push(C.init + C.monthly * m); alt.push(fv(C.init, C.monthly, gNo, m)); }
           const mx = Math.max(...pts, 1);
           const X = (i) => i / (pts.length - 1) * W, Y = (v) => H - 6 - v / mx * (H - 36);
           const line = (arr) => arr.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join('');
           const yr = C.year, xm = yr * 12 / 240 * W;
-          $('#c-svg').innerHTML = `<svg viewBox="0 0 ${W} ${H}" aria-label="منحنى نمو الاستثمار"><defs><linearGradient id="cg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#3A47E6" stop-opacity=".2"/><stop offset="1" stop-color="#3A47E6" stop-opacity=".02"/></linearGradient></defs><path d="${line(pts)}L${W} ${H}L0 ${H}Z" fill="url(#cg)"/><line x1="${xm}" x2="${xm}" y1="0" y2="${H}" stroke="#9FB0F5" stroke-width="2"/><path d="${line(base)}" fill="none" stroke="#1B1E24" stroke-width="3.5" stroke-linecap="round"/><path d="${line(pts)}" fill="none" stroke="#3A47E6" stroke-width="4.5" stroke-linecap="round"/></svg>`;
-          const a = fv(C.init, C.monthly, p.rate, yr * 12), b = C.init + C.monthly * yr * 12, g = a - b;
+          $('#c-svg').innerHTML = `<svg viewBox="0 0 ${W} ${H}" aria-label="منحنى نمو الاستثمار"><defs><linearGradient id="cg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#3A47E6" stop-opacity=".2"/><stop offset="1" stop-color="#3A47E6" stop-opacity=".02"/></linearGradient></defs><path d="${line(pts)}L${W} ${H}L0 ${H}Z" fill="url(#cg)"/><line x1="${xm}" x2="${xm}" y1="0" y2="${H}" stroke="#9FB0F5" stroke-width="2"/><path d="${line(base)}" fill="none" stroke="#1B1E24" stroke-width="3.5" stroke-linecap="round"/>${REINV ? `<path d="${line(alt)}" fill="none" stroke="#13A57A" stroke-width="3" stroke-dasharray="7 6" stroke-linecap="round"/>` : ''}<path d="${line(pts)}" fill="none" stroke="#3A47E6" stroke-width="4.5" stroke-linecap="round"/></svg>`;
+          $('#c-legend').innerHTML = `<span><i style="background:#3A47E6"></i>${REINV ? 'مع إعادة استثمار التوزيعات' : 'بدون إعادة استثمار التوزيعات'}</span>${REINV ? '<span><i class="dash" style="border-color:#13A57A"></i>بدون إعادة الاستثمار</span>' : ''}<span><i style="background:#1B1E24"></i>المبلغ المدفوع فقط</span>`;
+          const a = fv(C.init, C.monthly, rMain, yr * 12), b = C.init + C.monthly * yr * 12, g = a - b, aNo = fv(C.init, C.monthly, gNo, yr * 12);
+          $('#c-note').innerHTML = REINV ? `إعادة استثمار التوزيعات تضيف ${money(a - aNo, 0)} لقيمة استثمارك بعد ${yr} ${yr <= 10 ? 'سنوات' : 'سنة'}.` : `بدون إعادة الاستثمار تُصرف لك توزيعات إجمالها ${money(paid(yr * 12), 0)} تقريبًا خلال ${yr} ${yr <= 10 ? 'سنوات' : 'سنة'}. فعّل الخيار عشان تشوف أثر إعادة استثمارها.`;
           $('#c-val').innerHTML = money(a); $('#c-gain').innerHTML = `<span>▲ (${fmt(b ? g / b * 100 : 0, 1)}%)</span>${money(g)}`;
           $('#t-yr').textContent = yr === 1 ? 'بعد سنة' : `بعد ${yr} ${yr <= 10 ? 'سنوات' : 'سنة'}`;
           $('#t-a').innerHTML = money(a); $('#t-b').innerHTML = money(b, 0);
@@ -1105,7 +1332,7 @@
   route('/manage', {
     auth: true,
     view: () => `${topbar('إدارة المحافظ', '', '/services')}<div class="section-label" style="font-size:17px;color:var(--text);font-weight:600;margin-top:24px">المحافظ</div>
-      ${S.plan ? `<button class="pick-row" data-go="/home"><div class="icon-circle solid" style="border-radius:50%">${ic('shield')}</div><span class="grow">محفظة التقاعد <span class="badge-soft">${S.plan.mode === 'custom' ? 'من تصميمك' : 'خطة مقترحة'}</span><div class="small">${S.plan.funded ? money(S.plan.balance) : 'بانتظار التمويل'}</div></span>${ic('chevL')}</button>` : ''}
+      ${S.plan ? `<button class="pick-row" data-go="/home"><div class="icon-circle solid" style="border-radius:50%">${ic('shield')}</div><span class="grow">محفظة التقاعد <span class="badge-soft">${modeBadge(S.plan)}</span><div class="small">${S.plan.funded ? money(S.plan.balance) : 'بانتظار السداد'}</div></span>${ic('chevL')}</button>` : ''}
       ${S.portfolios.map((x) => `<button class="pick-row" data-go="/portfolio/${x.id}">${iconCircle(PORTS[x.id])}<span class="grow">محفظة ${PORTS[x.id].name}<div class="small">${money(x.balance)}</div></span>${ic('chevL')}</button>`).join('')}
       ${!S.plan && !S.portfolios.length ? '<p class="sub center mt16">ما عندك محافظ للحين</p>' : ''}
       <button class="btn tint mt16" data-go="/create">${ic('plus')}إنشاء محفظة</button>`,
@@ -1143,26 +1370,35 @@
       const pre = first ? S.plan.savings : opp ? opp.min : '';
       return `${topbar('اختر وسيلة الإيداع', '', isSanad ? '/home' : `/portfolio/${id}`)}
         <div class="banner">${ic('chart')}<span>الحد الأدنى ${opp ? 'لهذه الفرصة' : 'لبدء الاستثمار'} ${money(opp ? opp.min : 50, 0)}</span></div>
-        <div class="pay-opts"><button class="pay-opt on" data-method="card">${ic('card')}عبر البطاقة</button><button class="pay-opt" data-method="bank"><span class="badge-new">أسرع</span>${ic('landmark')}تحويل بنكي</button></div>
+        <div class="pay-opts"><button class="pay-opt on" data-method="card">${ic('card')}عبر البطاقة</button><button class="pay-opt" data-method="bank"><span class="badge-new">أسرع</span>${ic('landmark')}تحويل بنكي</button><button class="pay-opt wide" data-method="later">${ic('clock')}السداد لاحقًا</button></div>
         <div class="input"><input id="dep" type="tel" inputmode="decimal" placeholder="قيمة الإيداع" value="${pre}" aria-label="قيمة الإيداع"/>${RIYAL}</div>
         <p class="small mt8">${first ? 'المبلغ المقترح حسب خطتك، تقدر تغيّره' : opp ? `في ${opp.name} · عائد ${fmt(opp.rate, 1)}% · توزيع ${opp.freq}` : `إلى ${isSanad ? 'محفظة التقاعد' : 'محفظة ' + p.name}`}</p>
         <div class="divider" style="margin:20px 0"></div>
         <div id="method-box"></div>
-        <button class="pick-row mt24" data-action="autoDep">${ic('repeat')}<span class="grow">الاستقطاع الشهري${S.auto && S.auto[id] ? `<div class="small">${money(S.auto[id].amount, 0)} يوم ${S.auto[id].day} من كل شهر</div>` : ''}</span>${ic('chevL')}</button>
         <div class="cta-bottom"><button class="btn" id="dep-go" disabled>أودع</button></div>`;
     },
     mount: (root, { id }, q) => {
       const $ = (s) => root.querySelector(s); let method = 'card';
-      const box = () => { $('#method-box').innerHTML = method === 'card' ? `<b style="font-size:18px">طرق الدفع المدعومة</b><div class="methods"><span>Apple Pay</span><span>مدى mada</span><span>VISA</span><span>Mastercard</span></div>` : `<div class="info-box">${ic('info')}<span>في النسخة الفعلية يظهر هنا رقم الآيبان الخاص بحسابك الاستثماري لإتمام التحويل.</span></div>`; };
+      const box = () => {
+        $('#method-box').innerHTML = method === 'card' ? `<b style="font-size:18px">طرق الدفع المدعومة</b><div class="methods"><span>Apple Pay</span><span>مدى mada</span><span>VISA</span><span>Mastercard</span></div>`
+          : method === 'bank' ? `<div class="info-box">${ic('info')}<span>في النسخة الفعلية يظهر هنا رقم الآيبان الخاص بحسابك الاستثماري لإتمام التحويل.</span></div>`
+          : `<div class="info-box">${ic('clock')}<span>بنحفظ ${id === 'sanad' ? 'خطتك' : 'طلبك'}، وتقدر تكمل السداد في أي وقت من ${id === 'sanad' ? 'الرئيسية' : 'صفحة المحفظة'}. ${id === 'sanad' ? 'دفعاتك الشهرية تبدأ بعد السداد.' : ''}</span></div>`;
+        btn.textContent = method === 'later' ? 'متابعة والسداد لاحقًا' : 'أودع'; chk();
+      };
       root.querySelectorAll('[data-method]').forEach((b) => b.addEventListener('click', () => { method = b.dataset.method; root.querySelectorAll('[data-method]').forEach((x) => x.classList.toggle('on', x === b)); box(); }));
       const inp = $('#dep'), btn = $('#dep-go');
       const val = () => +toLatin(inp.value).replace(/[^\d.]/g, '') || 0;
       const opp = id === 'corp-sukuk' ? SUKUK.find((x) => x.id === q.get('opp')) : null, min = opp ? opp.min : 50;
-      const chk = () => { btn.disabled = val() < min; };
+      const chk = () => { btn.disabled = method !== 'later' && val() < min; };
       inp.addEventListener('input', chk); box(); chk();
-      btn.addEventListener('click', () => confirmDeposit(id, val(), method, q.get('first') === '1', opp));
+      btn.addEventListener('click', () => (method === 'later' ? payLater(id) : confirmDeposit(id, val(), method, q.get('first') === '1', opp)));
     },
   });
+  function payLater(id) {
+    track('pay_later');
+    if (id === 'sanad' && S.plan) { S.plan.payLater = true; save(); go('/home', { replace: true }); toast('تم حفظ خطتك، وتقدر تسدد لاحقًا من الرئيسية'); return; }
+    go(`/portfolio/${id}`, { replace: true }); toast('تم حفظ طلبك، وتقدر تسدد لاحقًا');
+  }
   function confirmDeposit(id, amt, method, first, opp) {
     const name = id === 'sanad' ? 'محفظة التقاعد' : opp ? opp.name : 'محفظة ' + PORTS[id].name;
     openSheet({
@@ -1171,7 +1407,7 @@
         <div class="warn mt16">${ic('info')}<span>هذا نموذج أولي: لن يُخصم أي مبلغ ولن تُطلب بيانات بطاقة.</span></div>
         <button class="btn mt16" id="cf">تأكيد الإيداع</button>`,
       mount: (sh) => sh.querySelector('#cf').addEventListener('click', () => {
-        if (id === 'sanad') { const p = S.plan; if (!p.funded) { p.balance = amt; p.funded = true; track('deposit_first'); } else p.balance += amt; }
+        if (id === 'sanad') { const p = S.plan; if (!p.funded) { p.balance = amt; p.funded = true; p.payLater = false; track('deposit_first'); } else p.balance += amt; }
         else { const x = S.portfolios.find((y) => y.id === id); if (x) x.balance += amt; else S.portfolios.push({ id, balance: amt, createdAt: new Date().toISOString() }); }
         if (opp) { S.sukuk = S.sukuk || []; S.sukuk.push({ opp: opp.id, amount: amt, date: vToday().toISOString() }); }
         track('deposit'); save();
@@ -1180,18 +1416,18 @@
       }),
     });
   }
-  ACTIONS.autoDep = () => {
-    const id = (location.hash.match(/deposit\/([^?]+)/) || [])[1]; if (!id) return;
-    const cur = (S.auto && S.auto[id]) || { amount: 1000, day: 27 };
+  ACTIONS.autoDep = (el) => {
+    const id = (el && el.dataset.id) || (location.hash.match(/deposit\/([^?]+)/) || [])[1]; if (!id) return;
+    const cur = (S.auto && S.auto[id]) || { amount: 1000, day: PAY_DAY };
     openSheet({
       title: 'الاستقطاع الشهري',
-      html: `<p class="sub mb16">نودع المبلغ تلقائيًا كل شهر</p><div class="input"><input id="au" type="tel" inputmode="numeric" value="${cur.amount}" dir="ltr" style="text-align:right" aria-label="المبلغ الشهري"/>${RIYAL}</div>
-        <p class="h3 mt16">يوم الاستقطاع</p><div class="chips" style="justify-content:flex-start">${[1, 10, 25, 27].map((d) => `<button class="chip ${d === cur.day ? 'on' : ''}" data-ad="${d}">يوم ${d}</button>`).join('')}</div>
+      html: `<p class="sub mb16">اختياري: نودع المبلغ تلقائيًا يوم ${PAY_DAY} من كل شهر</p><div class="input"><input id="au" type="tel" inputmode="numeric" value="${cur.amount}" dir="ltr" style="text-align:right" aria-label="المبلغ الشهري"/>${RIYAL}</div>
+        <div class="chips" style="justify-content:flex-start">${[500, 1000, 2000].map((v) => `<button class="chip" data-av="${v}">${fmt(v)}</button>`).join('')}</div>
         <button class="btn mt24" id="au-ok">حفظ</button>${S.auto && S.auto[id] ? '<button class="btn soft mt12" id="au-off">إيقاف الاستقطاع</button>' : ''}`,
       mount: (sh) => {
-        let day = cur.day;
-        sh.querySelectorAll('[data-ad]').forEach((b) => b.addEventListener('click', () => { day = +b.dataset.ad; sh.querySelectorAll('[data-ad]').forEach((x) => x.classList.toggle('on', x === b)); }));
-        sh.querySelector('#au-ok').onclick = () => { S.auto = S.auto || {}; S.auto[id] = { amount: Math.max(50, +digits(sh.querySelector('#au').value) || 50), day }; save(); closeSheet(true); render(); toast('تم تفعيل الاستقطاع الشهري'); };
+        const day = PAY_DAY;
+        sh.querySelectorAll('[data-av]').forEach((b) => b.addEventListener('click', () => { sh.querySelector('#au').value = b.dataset.av; }));
+        sh.querySelector('#au-ok').onclick = () => { S.auto = S.auto || {}; S.auto[id] = { amount: Math.max(50, +digits(sh.querySelector('#au').value) || 50), day }; track('auto_dep_set'); save(); closeSheet(true); render(); toast('تم تفعيل الاستقطاع الشهري'); };
         const off = sh.querySelector('#au-off'); if (off) off.onclick = () => { delete S.auto[id]; save(); closeSheet(true); render(); };
       },
     });
@@ -1201,42 +1437,29 @@
   route('/settings', {
     auth: true, nav: 'settings',
     view: () => {
-      const u = S.user, ph = u.phone || '';
+      const u = S.user, ph = u.phone || '', nid = u.nid || '';
       const rowB = (icon, label, attr, extra = '') => `<button class="pick-row" ${attr}>${ic(icon)}<span class="grow">${label}</span>${extra || ic('chevL')}</button>`;
+      const title = u.name ? esc(u.name) : u.guest ? 'زائر' : 'حسابي';
       return `<h1 class="page-title">الإعدادات</h1>
-        <div class="card row"><div class="icon-circle lg">${ic('user')}</div><div><b style="font-size:20px">${esc(u.name)}</b><div class="small" dir="ltr" style="text-align:right">+966 ${ph.slice(0, 1)}•• ••• ${ph.slice(-3)}</div>${u.demo ? '<span class="badge-soft">حساب تجريبي</span>' : ''}</div></div>
+        <div class="card row"><div class="icon-circle lg">${ic('user')}</div><div><b style="font-size:20px">${title}</b>${nid ? `<div class="small">الهوية <span dir="ltr">${'•'.repeat(6)}${nid.slice(-4)}</span></div>` : ''}${ph ? `<div class="small" dir="ltr" style="text-align:right">+966 ${ph.slice(0, 1)}•• ••• ${ph.slice(-3)}</div>` : ''}${u.demo ? '<span class="badge-soft">حساب تجريبي</span>' : u.guest ? '<span class="badge-soft">بدون تسجيل</span>' : ''}</div></div>
+        ${u.guest ? rowB('user', '<b>إنشاء حساب</b>', 'data-go="/register"') : ''}
         <div class="section-label">الخطة</div>
         ${rowB('shield', 'خطتي', 'data-go="/home"')}
         ${rowB('target', 'إعداد الدخل من جديد', 'data-go="/income"')}
         ${S.plan ? rowB('pencil', 'تعديل الخطة', 'data-go="/plan/edit"') : ''}
         <div class="section-label">النموذج الأولي</div>
-        ${rowB('chart', 'إحصاءات النموذج الأولي', 'data-go="/insights"')}
         ${rowB('info', 'عن النموذج الأولي', 'data-go="/about"')}
-        ${rowB('lock', 'قفل التطبيق', 'data-action="lockNow"')}
+        ${S.passcode ? rowB('lock', 'قفل التطبيق', 'data-action="lockNow"') : ''}
         ${rowB('refresh', '<span class="neg">إعادة ضبط التجربة</span>', 'data-action="confirmReset"', '')}`;
     },
   });
   ACTIONS.lockNow = () => { unlocked = false; go('/lock', { replace: true }); };
   ACTIONS.confirmReset = () => openSheet({ title: 'إعادة ضبط التجربة', html: '<p class="sub mb16 center">بنحذف الحساب والخطة والمحافظ المحفوظة على هذا الجهاز.</p><button class="btn" data-action="resetAll">نعم، أعد الضبط</button><button class="btn soft mt12" data-action="closeSheet">إلغاء</button>' });
 
-  route('/insights', {
-    auth: true,
-    view: () => {
-      const e = S.events, v = (k) => e[k] || 0;
-      const steps = [['فتح التطبيق', v('view:splash')], ['إنشاء حساب', v('register_done') + v('demo_start')], ['بدء إعداد الدخل', v('income_start')], ['اعتماد الخطة', v('plan_approved')], ['أول إيداع', v('deposit_first')]];
-      const mx = Math.max(1, ...steps.map((s) => s[1]));
-      const rows = [['عرض الدفعات', v('view:payments')], ['حفظ تعديلات الخطة', v('plan_edit_saved')], ['توقيع إقرار المخاطر', v('ack_signed')], ['محاكاة دفعات', v('payment_simulated')], ['استخدام حاسبة العوائد', v('calc_used')], ['عمليات الإيداع', v('deposit')], ['الدخول بحساب التجربة', v('demo_start')]];
-      return `${topbar('إحصاءات النموذج', '', '/settings')}
-        <div class="card funnel"><h3 class="h3">مسار المستخدم</h3>${steps.map(([l, n]) => `<div class="st"><div class="row between"><span>${l}</span><b>${n}</b></div><div class="bar"><i style="width:${n / mx * 100}%"></i></div></div>`).join('')}</div>
-        <div class="card"><h3 class="h3">التفاعل</h3><table class="tbl">${rows.map(([l, n]) => `<tr><td>${l}</td><td>${n}</td></tr>`).join('')}</table></div>
-        <p class="small mt12">تُحفظ هذه الأرقام على جهازك فقط، وتساعد في قياس رحلة المستخدم أثناء التجربة.</p>`;
-    },
-  });
-
   route('/about', {
     auth: true,
     view: () => `${topbar('عن النموذج الأولي', '', '/settings')}
-      <div class="card"><h3 class="h3">سند</h3><p class="sub">مفهوم مقترح لأبيان المالية ضمن تحدي صُنّاع الحلول: خطة دخل شهري للمتقاعدين بخطة السلال الثلاث (السيولة 20–30%، الدخل الثابت 40–50%، النمو 20–30%).</p></div>
+      <div class="card"><h3 class="h3">سند</h3><p class="sub">مفهوم مقترح لأبيان المالية ضمن تحدي صُنّاع الحلول: خطة دخل شهري للمتقاعدين، يبنيها مستشار آلي يحاول يوصلك لدخلك المستهدف بحد أقصى ${RISK_CAP}% مخاطر على رأس المال خلال 12 شهر.</p></div>
       <div class="card"><h3 class="h3">الرحلة الأساسية</h3><ul class="checks" style="margin:6px 0 0">
         <li>${ic('check')}<a class="link" data-go="/register">التسجيل</a></li>
         <li>${ic('check')}<a class="link" data-go="/income">إعداد الدخل</a></li>
