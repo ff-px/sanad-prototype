@@ -1,6 +1,6 @@
 /* سند · نموذج أولي تفاعلي
    تطبيق صفحة واحدة بدون مكتبات خارجية — يعمل كموقع ثابت على Cloudflare Pages.
-   كل الأرقام توضيحية، ولا يتم إرسال أي بيانات خارج المتصفح. */
+   كل الأرقام توضيحية. بيانات الحساب والخطة تبقى في المتصفح، وتُرسل فقط إحصاءات استخدام مجهولة إلى PostHog (analytics.js). */
 (() => {
   'use strict';
 
@@ -151,7 +151,7 @@
     return defaultState();
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* تجاهل */ } }
-  function track(ev) { S.events[ev] = (S.events[ev] || 0) + 1; save(); }
+  function track(ev) { S.events[ev] = (S.events[ev] || 0) + 1; save(); try { window.sanadTrack && window.sanadTrack(ev); } catch (e) {} }
 
   const vToday = () => addMonths(new Date(), S.simOffset || 0);
   function nextPayDate(day, from = vToday()) {
@@ -359,7 +359,7 @@
       <p class="sub mb16">أدخل بياناتك وبنرسل لك رمز تحقق على جوالك.</p>
       <label class="field"><span>الاسم</span><div class="input" id="f-name"><input id="name" autocomplete="name" placeholder="مثال: أبو فيصل" value="${esc(r.name || '')}"/></div></label>
       <label class="field"><span>رقم الجوال</span><div class="input" id="f-phone"><input id="phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="5XXXXXXXX" maxlength="10" dir="ltr" style="text-align:right" value="${esc(r.phone || '')}"/><span class="prefix">+966</span></div></label>
-      <label class="check mt8"><input type="checkbox" id="terms" ${r.terms ? 'checked' : ''}/><span>أوافق على الشروط والأحكام وسياسة الخصوصية، وأعرف أن هذا نموذج أولي لا يجمع أي بيانات.</span></label>
+      <label class="check mt8"><input type="checkbox" id="terms" ${r.terms ? 'checked' : ''}/><span>أوافق على الشروط والأحكام وسياسة الخصوصية، وأعرف أن هذا نموذج أولي لا يحفظ بياناتي خارج جهازي، ويجمع فقط إحصاءات استخدام مجهولة لتحسينه.</span></label>
       <div class="err-msg" id="err"></div>
       <div class="cta-bottom"><button class="btn" data-action="register">متابعة</button></div>`;
     },
@@ -1242,7 +1242,7 @@
         <li>${ic('check')}<a class="link" data-go="/income">إعداد الدخل</a></li>
         <li>${ic('check')}<a class="link" data-go="/payments">عرض الدفعات</a></li>
         <li>${ic('check')}<a class="link" data-go="/plan/edit">تعديل الخطة</a></li></ul></div>
-      <div class="warn mt16">${ic('info')}<span>كل الأرقام والعوائد في هذا النموذج توضيحية وليست توصية استثمارية. لا يتم جمع أي بيانات أو تنفيذ أي عملية مالية، وكل شيء يُحفظ على جهازك فقط.</span></div>`,
+      <div class="warn mt16">${ic('info')}<span>كل الأرقام والعوائد في هذا النموذج توضيحية وليست توصية استثمارية. لا يتم تنفيذ أي عملية مالية، وبياناتك تُحفظ على جهازك فقط. نجمع إحصاءات استخدام مجهولة (الشاشات والنقرات) لتحسين النموذج، وما تكتبه في الحقول يبقى مخفيًا.</span></div>`,
   });
 
   /* ================= تشغيل ================= */
