@@ -19,14 +19,19 @@
     capture_pageleave: true,
     autocapture: true,
     session_recording: { maskAllInputs: true },
+    capture_dead_clicks: true,          // ضغطات ما سوّت شي (تكشف أزرار تبدو قابلة للضغط)
+    capture_exceptions: true,           // أخطاء JavaScript في الموقع
+    rageclick: { css_selector_ignorelist: ['.keypad', '.stepper'] }, // الضغط المتكرر على أرقام الرمز وأزرار +/− طبيعي
   });
+  // خصائص ثابتة مع كل حدث لتمييز نسخة الموقع
+  window.posthog.register({ product: 'sanad', app_version: '2026-11-21' });
 
   // يُستدعى من track() في app.js
-  window.sanadTrack = function (ev) {
+  window.sanadTrack = function (ev, props) {
     if (ev.indexOf('view:') === 0) {
-      window.posthog.capture('$pageview', { screen: ev.slice(5) });
+      window.posthog.capture('$pageview', Object.assign({ screen: ev.slice(5) }, props || {}));
     } else {
-      window.posthog.capture(ev);
+      window.posthog.capture(ev, props || {});
     }
   };
 })();
