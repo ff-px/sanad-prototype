@@ -105,10 +105,11 @@
   const RISK_CAP = 10; // الحد الأعلى لمخاطر رأس المال: أقصى انخفاض متوقع خلال 12 شهر (%)
   const PAY_DAY = 27;  // يوم الدفعة الشهرية ثابت لكل الخطط
   const ACK_LIMIT = 25;           // سلة النمو فوق هذه النسبة تتطلب إقرار مخاطر
-  const FEE = { base: 0.006, growthHigh: 0.009 }; // رسوم إدارة سنوية توضيحية
+  const FEE = { base: 0.01, growthHigh: 0.01 }; // رسوم إدارة سنوية 1% (نفس النموذج المالي)
+  const FEE_PCT = 1, ZAKAT_PCT = 2.5, YEARS = 15; // الرسوم والزكاة السنوية (%) ومدة الخطة
 
   const PORTS = {
-    saving: { name: 'الادخار', short: 'صناديق أسواق النقد', dy: 5.85, hex: '#9FB3FB', tk: 'MMF', icon: 'wallet', style: 'solid', desc: 'عوائد يومية تصل إلى <span class="pos">+5.85%</span> سنويًا', rate: 5.85, risk: 'منخفضة جدًا', vol: 0.0006,
+    saving: { name: 'الادخار', short: 'صناديق أسواق النقد', dy: 4.5, hex: '#9FB3FB', tk: 'MMF', icon: 'wallet', style: 'solid', desc: 'عوائد يومية بمتوسط <span class="pos">+4.5%</span> سنويًا', rate: 4.5, risk: 'منخفضة جدًا', vol: 0.0006,
       hero: 'ادّخر بذكاء وخلّ فلوسك تشتغل كل يوم!', text: 'عوائد يومية من صناديق أسواق النقد المتوافقة مع الشريعة', holdings: [['صناديق أسواق النقد', 'MMF', 100]] },
     'div-safe': { name: 'المتنوعة (آمنة)', short: 'تنويع منخفض المخاطر', dy: 4.0, hex: '#7C8CF0', tk: 'MULTI', icon: 'scale', rate: 4.44, risk: 'منخفضة', vol: 0.003, parent: 'diversified',
       holdings: [['صكوك', 'SUKUK', 50], ['صناديق أسواق النقد', 'MMF', 25], ['أسهم عالمية', 'GLOBAL', 15], ['عقارات', 'REIT', 10]] },
@@ -118,11 +119,11 @@
       holdings: [['أسهم أمريكية', 'US-EQ', 50], ['الأسهم السعودية', 'TASI', 25], ['الصكوك', 'SUKUK', 15], ['عقارات', 'REIT', 10]] },
     'div-high': { name: 'المتنوعة (نمو عالي)', short: 'تنويع بنمو عالي', dy: 1.5, hex: '#232C93', tk: 'MULTI', icon: 'scale', rate: 10.5, risk: 'مرتفعة جدًا', vol: 0.012, parent: 'diversified',
       holdings: [['أسهم أمريكية', 'US-EQ', 60], ['الأسهم السعودية', 'TASI', 30], ['عقارات', 'REIT', 10]] },
-    dividends: { name: 'التوزيعات', short: 'أسهم وريت وصكوك موزّعة', dy: 6.5, hex: '#13A57A', tk: 'DIV', icon: 'coins', isNew: true, desc: 'لزيادة دخلك بتوزيعات شهرية', tags: ['أسهم', 'عقارات', 'صناديق أسواق النقد', 'صكوك'], rate: 7.0, risk: 'متوسطة', vol: 0.005,
+    dividends: { name: 'التوزيعات', short: 'أسهم وريت وصكوك موزّعة', dy: 5.5, hex: '#13A57A', tk: 'DIV', icon: 'coins', isNew: true, desc: 'لزيادة دخلك بتوزيعات شهرية', tags: ['أسهم', 'عقارات', 'صناديق أسواق النقد', 'صكوك'], rate: 7.0, risk: 'متوسطة', vol: 0.005,
       hero: 'دخل شهري من توزيعات أرباح مختارة', holdings: [['أسهم توزيعات', 'DIV', 40], ['صناديق الريت', 'REIT', 25], ['صكوك', 'SUKUK', 20], ['صناديق أسواق النقد', 'MMF', 15]] },
-    'corp-sukuk': { name: 'صكوك الشركات', short: 'صكوك شركات شرعية', dy: 6.9, hex: '#2F7BDB', tk: 'SUKUK', icon: 'landmark', isNew: true, desc: 'استثمر فقط في صكوك الشركات المتوافقة مع الشريعة', tags: ['صكوك شركات شرعية', 'عوائد ثابتة', 'توزيعات دورية'], rate: 6.9, risk: 'منخفضة', vol: 0.0015,
+    'corp-sukuk': { name: 'صكوك الشركات', short: 'صكوك شركات شرعية', dy: 6.5, hex: '#2F7BDB', tk: 'SUKUK', icon: 'landmark', isNew: true, desc: 'استثمر فقط في صكوك الشركات المتوافقة مع الشريعة', tags: ['صكوك شركات شرعية', 'عوائد ثابتة', 'توزيعات دورية'], rate: 6.5, risk: 'منخفضة', vol: 0.0015,
       hero: 'صكوك شركات شرعية بعوائد ثابتة', text: 'فرص استثمارية محدودة المدة في صكوك شركات سعودية معتمدة من اللجنة الشرعية، بعوائد ثابتة وتوزيعات دورية (شهرية، ربعية، نصف سنوية)', holdings: [] },
-    reit: { name: 'الأسهم العقارية', short: 'صناديق ريت وأسهم عقارية', dy: 6.0, hex: '#F29E4C', tk: 'REIT', icon: 'building', isNew: true, desc: 'للاستثمار في صناديق الريت وأسهم شركات العقار', tags: ['صناديق ريت', 'أسهم عقارية', 'توزيعات نقدية'], rate: 7.8, risk: 'متوسطة', vol: 0.008,
+    reit: { name: 'الأسهم العقارية', short: 'صناديق ريت وأسهم عقارية', dy: 6.5, hex: '#F29E4C', tk: 'REIT', icon: 'building', isNew: true, desc: 'للاستثمار في صناديق الريت وأسهم شركات العقار', tags: ['صناديق ريت', 'أسهم عقارية', 'توزيعات نقدية'], rate: 7.0, risk: 'متوسطة', vol: 0.008,
       hero: 'استثمر في العقار بدون ما تشتري عقار', text: 'صناديق ريت وأسهم شركات عقارية توزّع أرباحًا نقدية', holdings: [['صناديق الريت السعودية', 'REIT', 65], ['أسهم التطوير العقاري', 'RE-EQ', 35]] },
     saudi: { name: 'السوق السعودي', short: 'أسهم سعودية بإدارة نشطة', dy: 2.5, hex: '#E86A5E', tk: 'TASI', icon: 'palm', desc: 'لعوائد عالية في أسهم مختارة بإدارة نشطة', tags: ['أسهم سعودية (نشطة)'], rate: 9.5, risk: 'مرتفعة', vol: 0.011,
       hero: 'اقتنص فرص السوق السعودي', holdings: [['أسهم سعودية مختارة', 'TASI', 100]] },
@@ -149,19 +150,38 @@
      الدخل الشهري = الرصيد × العائد المتوقع الكلي (توزيعات + نمو) ÷ 12. */
   const ADV = {
     saving: { loss: 0.5, min: 10, max: 40 },
-    'corp-sukuk': { loss: 4, min: 0, max: 40 },
-    'div-safe': { loss: 6, min: 0, max: 40 },
-    dividends: { loss: 14, min: 0, max: 30 },
-    reit: { loss: 16, min: 0, max: 25 },
-    'div-bal': { loss: 12, min: 0, max: 30 },
-    'div-growth': { loss: 18, min: 0, max: 20 },
-    'div-high': { loss: 24, min: 0, max: 15 },
-    saudi: { loss: 25, min: 0, max: 15 },
+    'corp-sukuk': { loss: 6.5, min: 0, max: 40 },
+    'div-safe': { loss: 6.3, min: 0, max: 40 },
+    dividends: { loss: 14.4, min: 0, max: 30 },
+    reit: { loss: 24.5, min: 0, max: 25 },
+    'div-bal': { loss: 14.2, min: 0, max: 30 },
+    'div-growth': { loss: 16.9, min: 0, max: 20 },
+    'div-high': { loss: 19.6, min: 0, max: 15 },
+    saudi: { loss: 30, min: 0, max: 15 },
     future: { loss: 55, min: 0, max: 5 },
   };
   const ADV_ALL = ['saving', 'corp-sukuk', 'div-safe', 'dividends', 'reit', 'div-bal', 'div-growth', 'div-high', 'saudi'];
   const mixRate = (w) => Object.keys(w).reduce((s, id) => s + (w[id] || 0) * (PORTS[id] ? PORTS[id].rate : 0) / 100, 0); // %
-  const mixLoss = (w) => Object.keys(w).reduce((s, id) => s + (w[id] || 0) * (ADV[id] ? ADV[id].loss : 0) / 100, 0); // %
+  /* نموذج المخاطر (نفس ورقة RiskModel في النموذج المالي): أقصى انخفاض خلال 12 شهر مع مراعاة الارتباط بين الأصول
+     الأصول: نقد، صكوك، أسهم عالمية، أسهم سعودية، أسهم توزيعات، ريت، تطوير عقاري، بيتكوين */
+  const AC_LOSS = [0.5, 6.5, 20, 30, 25, 22, 35, 85];
+  const AC_CORR = (() => { const R = AC_LOSS.map((_, i) => AC_LOSS.map((__, j) => (i === j ? 1 : 0)));
+    [[1, 2, .3], [1, 3, .2], [1, 4, .2], [1, 5, .3], [1, 6, .2], [2, 3, .5], [2, 4, .45], [2, 5, .4], [2, 6, .45], [3, 4, .9], [3, 5, .6], [3, 6, .8], [4, 5, .6], [4, 6, .7], [5, 6, .7], [7, 2, .4], [7, 3, .2], [7, 4, .2], [7, 5, .2], [7, 6, .2], [7, 1, .1]]
+      .forEach(([i, j, v]) => { R[i][j] = v; R[j][i] = v; }); return R; })();
+  const AC_COV = AC_LOSS.map((li, i) => AC_LOSS.map((lj, j) => AC_CORR[i][j] * li * lj));
+  const EXPO = { saving: [1, 0, 0, 0, 0, 0, 0, 0], 'div-safe': [.25, .5, .15, 0, 0, .1, 0, 0], 'div-bal': [0, .3, .35, .2, 0, .15, 0, 0], 'div-growth': [0, .15, .5, .25, 0, .1, 0, 0],
+    'div-high': [0, 0, .6, .3, 0, .1, 0, 0], saudi: [0, 0, 0, 1, 0, 0, 0, 0], 'corp-sukuk': [0, 1, 0, 0, 0, 0, 0, 0], dividends: [.15, .2, 0, 0, .4, .25, 0, 0], reit: [0, 0, 0, 0, 0, .65, .35, 0], future: [0, 0, .4, 0, 0, 0, 0, .6] };
+  const quadLoss = (x) => { let q = 0; for (let i = 0; i < 8; i++) { if (!x[i]) continue; for (let j = 0; j < 8; j++) q += x[i] * AC_COV[i][j] * x[j]; } return Math.sqrt(Math.max(q, 0)); };
+  // درجة المخاطر = أقصى خسارة خلال 12 شهر شاملة رسوم الإدارة 1% (نفس شرط أبيان في النموذج)
+  const mixLoss = (w) => { const x = [0, 0, 0, 0, 0, 0, 0, 0]; let t = 0;
+    Object.keys(w).forEach((id) => { const v = (w[id] || 0) / 100; if (!v || !EXPO[id]) return; t += v; EXPO[id].forEach((e, k) => (x[k] += v * e)); });
+    return t > 0 ? quadLoss(x) + FEE_PCT : 0; }; // %
+  // دفعة شهرية ثابتة لمدة 15 سنة: الحد الأعلى اللي تقدر المحفظة تصرفه بعد الرسوم والزكاة (من العائد ورأس المال)
+  const netRate = (mix) => (mixRate(mix) - FEE_PCT - ZAKAT_PCT) / 100;
+  const annuityF = (g, n = YEARS) => (Math.abs(g) < 1e-9 ? 1 / n : g * Math.pow(1 + g, n) / (Math.pow(1 + g, n) - 1));
+  const maxPay = (bal, mix) => bal * annuityF(netRate(mix)) / 12;
+  // الرصيد سنة بسنة مثل ورقة أبو فيصل: الرصيد × (1 + العائد − الرسوم − الزكاة) − دفعات السنة + الاستقطاع
+  function yearPath(P, mix, pay, monthly = 0, n = YEARS) { const g = netRate(mix), v = [P]; for (let y = 1; y <= n; y++) v.push(v[y - 1] * (1 + g) - pay * 12 + monthly * 12); return v; }
   // توزيع جشع حسب (العائد − λ × المخاطر) مع احترام حدود كل نوع؛ λ كبيرة = أقل مخاطرة، λ = 0 = أعلى عائد
   function greedy(ids, lam) {
     const w = {}; let left = 100;
@@ -195,7 +215,7 @@
   const reqRate = (savings, target) => target * 12 / Math.max(savings, 1) * 100;
   // أقل مخاطرة توصل للدخل المستهدف ضمن الحد
   function hitTarget(ids, ty, cap) { const w = edge(ids, (m) => mixRate(m) >= ty - 1e-9, 60); return w && mixLoss(w) <= cap + 1e-9 ? w : null; }
-  const reachable = (savings, target) => !!hitTarget(ADV_ALL, reqRate(savings, target), RISK_CAP);
+  const reachable = (savings, target) => maxPay(savings, bestMix(ADV_ALL, RISK_CAP)) >= target - 0.5;
   /* يحاول دائمًا يوصل للمبلغ المستهدف بالكامل. why: profile = أنواع وصف المخاطر لا تكفي، cap = حد 10% يمنع، max = حتى بدون حد ما يكفي */
   // أفضل خطة: بعد ما نلقى أقل مخاطرة توصل للهدف، نأخذ أعلى دخل ممكن بنفس مستوى المخاطر (يوصل للهدف أو يتفوق عليه)
   function polish(pool, w) { const best = edge(pool, (m) => mixLoss(m) <= mixLoss(w) + 1e-9, 0); return best && mixRate(best) > mixRate(w) + 1e-9 ? best : w; }
@@ -220,40 +240,42 @@
     mid: ['أقرب ما يكون لـ10% بدون ما يوصلها', 'جميع المحافظ'],
     high: ['فوق 10% بإقرار المخاطر', 'تحدد نسبة المخاطر بنفسك', 'جميع المحافظ'],
   };
-  const BEST_CACHE = {};
-  function bestMix(ids, cap) {
-    const key = ids.join(',') + '|' + cap;
-    if (BEST_CACHE[key]) return { ...BEST_CACHE[key] };
-    const n = ids.length, r = ids.map((id) => PORTS[id].rate), l = ids.map((id) => ADV[id].loss), mn = ids.map((id) => ADV[id].min), mx = ids.map((id) => ADV[id].max);
+  const FRONT_CACHE = {};
+  // الحد الكفء (نفس ورقة Frontier): كل التوزيعات بخطوات 5% ضمن الحدود، ونحتفظ بالأعلى عائدًا لكل مستوى مخاطر
+  function frontier(ids) {
+    const key = ids.join(',');
+    if (FRONT_CACHE[key]) return FRONT_CACHE[key];
+    const n = ids.length, r = ids.map((id) => PORTS[id].rate), mn = ids.map((id) => ADV[id].min), mx = ids.map((id) => ADV[id].max), E = ids.map((id) => EXPO[id]);
     const restMin = Array(n + 1).fill(0), restMax = Array(n + 1).fill(0);
     for (let i = n - 1; i >= 0; i--) { restMin[i] = restMin[i + 1] + mn[i]; restMax[i] = restMax[i + 1] + mx[i]; }
-    const lim = cap - 0.05 - 1e-9, w = Array(n).fill(0);
-    let best = null, bR = -1, bL = Infinity;
-    (function rec(i, left, R, L) {
-      if (i === n - 1) {
-        if (left < mn[i] || left > mx[i]) return;
-        const RR = R + left * r[i] / 100, LL = L + left * l[i] / 100;
-        if (LL < lim && (RR > bR + 1e-9 || (Math.abs(RR - bR) <= 1e-9 && LL < bL))) { w[i] = left; best = w.slice(); bR = RR; bL = LL; }
-        return;
-      }
-      for (let x = mn[i]; x <= Math.min(mx[i], left); x += 5) {
-        const L2 = L + x * l[i] / 100;
-        if (L2 >= lim) break;
-        if (left - x < restMin[i + 1] || left - x > restMax[i + 1]) continue;
-        w[i] = x; rec(i + 1, left - x, R + x * r[i] / 100, L2);
+    const all = [], w = Array(n).fill(0), x = [0, 0, 0, 0, 0, 0, 0, 0];
+    (function rec(i, left, R) {
+      for (let v = mn[i]; v <= Math.min(mx[i], left); v += 5) {
+        if (left - v < restMin[i + 1] || left - v > restMax[i + 1]) continue;
+        w[i] = v; for (let k = 0; k < 8; k++) x[k] += v / 100 * E[i][k];
+        if (i === n - 1) { if (left - v === 0) all.push([quadLoss(x) + FEE_PCT, R + v * r[i] / 100, w.slice()]); }
+        else rec(i + 1, left - v, R + v * r[i] / 100);
+        for (let k = 0; k < 8; k++) x[k] -= v / 100 * E[i][k];
       }
       w[i] = 0;
-    })(0, 100, 0, 0);
-    const out = best ? ids.reduce((m, id, k) => (m[id] = best[k], m), {}) : greedy(ids, 60);
-    BEST_CACHE[key] = out;
-    return { ...out };
+    })(0, 100, 0);
+    all.sort((p, q) => p[0] - q[0] || q[1] - p[1]);
+    const out = []; let best = -1;
+    all.forEach((f) => { if (f[1] > best + 1e-9) { out.push(f); best = f[1]; } });
+    FRONT_CACHE[key] = out; return out;
+  }
+  // أفضل محفظة: أعلى عائد بدرجة مخاطر (شاملة الرسوم، لأقرب خانة عشرية) أقل من النسبة المختارة
+  function bestMix(ids, cap) {
+    const F = frontier(ids); let pick = F[0];
+    F.forEach((f) => { if (f[0] < cap - 0.05 - 1e-9) pick = f; });
+    return ids.reduce((m, id, k) => (m[id] = pick[2][k], m), {});
   }
   const capOf = (d) => (PICK[d.risk] ? (d.cap || PICK[d.risk].def) : RISK_CAP); // متوازن (وأي قيمة قديمة) = أقل من 10%
   const capTxt = (v) => `أقل من ${fmt(v, v % 1 ? 1 : 0)}%`;
   // المستشار: دائمًا أفضل محفظة من كل المحافظ (أعلى عائد) بدرجة مخاطر أقل من النسبة المحددة لوصف العميل
   function adviseD(d) {
     const cap = capOf(d), mix = cleanMix(bestMix(ADV_ALL, cap));
-    const ok = mixRate(mix) >= reqRate(d.savings, d.target) - 1e-9;
+    const ok = maxPay(d.savings, mix) >= d.target - 0.5;
     return { mix, ok, why: ok ? null : 'pick', cap };
   }
 
@@ -263,11 +285,7 @@
   let S = load();
   if (S.plan) S.plan.payDay = PAY_DAY;
   // ترقية خطط المستشار الآلي القديمة إلى أعلى دخل بنفس مستوى مخاطرها
-  if (S.plan && S.plan.mode === 'auto' && S.plan.mix) {
-    const types = (RISK[S.plan.risk] || {}).types || ADV_ALL;
-    const pool = Object.keys(S.plan.mix).every((id) => types.includes(id)) ? types : ADV_ALL;
-    if (Object.keys(S.plan.mix).every((id) => ADV[id])) S.plan.mix = cleanMix(polish(pool, S.plan.mix));
-  }
+  if (S.plan && S.plan.mode === 'auto' && S.plan.mix) S.plan.mix = cleanMix(bestMix(ADV_ALL, S.plan.cap || RISK_CAP));
   let unlocked = false;
   let REINV = false; // عرض أثر إعادة استثمار التوزيعات في الرسوم الخطية
   function load() {
@@ -295,8 +313,16 @@
     const alloc = o.alloc || p.alloc;
     return KEYS.map((k) => ({ k, name: BASKETS[k].name, sub: BASKETS[k].sub, w: alloc[k], y: BASKETS[k].y, tr: BASKETS[k].tr, hex: BASKETS[k].hex, tk: BASKETS[k].tk, src: BASKETS[k].src, high: k === 'gro' && alloc[k] > ACK_LIMIT }));
   }
-  const split = (p, o = {}, bal = p.balance) => comps(p, o).reduce((r, c) => (r[c.k] = bal * c.w / 100 * c.y / 12, r), {});
-  const income = (p, o = {}, bal = p.balance) => Object.values(split(p, o, bal)).reduce((a, b) => a + b, 0);
+  const rawSplit = (p, o = {}, bal = p.balance) => comps(p, o).reduce((r, c) => (r[c.k] = bal * c.w / 100 * c.y / 12, r), {});
+  // الدفعة الشهرية: هدف العميل إذا تقدر المحفظة تصرفه 15 سنة بعد الرسوم والزكاة (من العائد ورأس المال)، وإلا أعلى دفعة ممكنة
+  function income(p, o = {}, bal = p.balance) {
+    const mode = o.mode || p.mode || 'preset';
+    if (mode === 'preset') return Object.values(rawSplit(p, o, bal)).reduce((a, b) => a + b, 0);
+    const mix = o.mix || p.mix || {}, cap = maxPay(bal, mix), t = o.target != null ? o.target : p.target;
+    return t > 0 ? Math.min(t, cap) : cap;
+  }
+  const split = (p, o = {}, bal = p.balance) => { const r = rawSplit(p, o, bal), s0 = Object.values(r).reduce((a, b) => a + b, 0), inc = income(p, o, bal);
+    Object.keys(r).forEach((k) => (r[k] = s0 > 0 ? r[k] / s0 * inc : 0)); return r; };
   const blendY = (alloc) => KEYS.reduce((s, k) => s + alloc[k] / 100 * BASKETS[k].y, 0);
   const planY = (p, o = {}) => comps(p, o).reduce((s, c) => s + c.w / 100 * c.y, 0);
   const planTR = (p, o = {}) => comps(p, o).reduce((s, c) => s + c.w / 100 * c.tr, 0);
@@ -376,14 +402,16 @@
   }
   const reinvToggle = (id) => `<div class="reinv"><span>إعادة استثمار التوزيعات</span><label class="toggle"><input type="checkbox" id="${id}" ${REINV ? 'checked' : ''} aria-label="إعادة استثمار التوزيعات"/><span></span></label></div>`;
   function projHTML(P, mix, monthly) {
-    const pr = project(P, mixRate(mix) / 100, monthly), e = 15;
+    const pay = income({ mode: 'custom', mix, balance: P, target: (S.draft && S.draft.target) || (S.plan && S.plan.target) || 0 }), path = yearPath(P, mix, pay, monthly), e = 15;
+    const g = netRate(mix), re = [P]; for (let y = 1; y <= e; y++) re.push(re[y - 1] * (1 + g) + monthly * 12);
+    const pr = { val: path, inc: path.map((_, y) => pay * 12 * y), tot: path.map((v, y) => v + pay * 12 * y), re };
     const xt = [[0, 'الآن'], [5, '5 سنوات'], [10, '10 سنوات'], [15, '15 سنة']];
     const chart = REINV
       ? lineChart([{ pts: pr.tot, color: '#8A93A6', dash: true, label: 'بدون إعادة استثمار (القيمة + الدخل المستلم)', short: 'بدون إعادة استثمار' }, { pts: pr.re, color: '#3A47E6', label: 'مع إعادة استثمار التوزيعات', short: 'مع إعادة الاستثمار' }], xt, { min: 0, label: 'أثر إعادة استثمار التوزيعات خلال 15 سنة' })
       : lineChart([{ pts: pr.inc, color: '#13A57A', label: 'الدخل المستلم التراكمي', short: 'الدخل المستلم', fill: false }, { pts: pr.val, color: '#3A47E6', label: 'قيمة محفظتك', short: 'قيمة محفظتك' }], xt, { min: 0, label: 'قيمة الاستثمار خلال 15 سنة' });
     const note = REINV
       ? `بعد 15 سنة: ${money(pr.re[e], 0)} مع إعادة الاستثمار، مقابل ${money(pr.tot[e], 0)} بدونها (فرق ${money(pr.re[e] - pr.tot[e], 0)}). مع إعادة الاستثمار ما تستلم دخل شهري خلال الفترة.`
-      : `خلال 15 سنة تستلم دخل إجمالي ${money(pr.inc[e], 0)} تقريبًا، وتبقى قيمة محفظتك ${money(pr.val[e], 0)}${monthly ? ' مع الاستقطاع الشهري' : ''}.`;
+      : `خلال 15 سنة تستلم ${money(pay, 0)} شهريًا (إجمالي ${money(pr.inc[e], 0)})، وتبقى قيمة محفظتك ${money(pr.val[e], 0)} بعد رسوم الإدارة ${FEE_PCT}% والزكاة ${ZAKAT_PCT}%${monthly ? ' مع الاستقطاع الشهري' : ''}.`;
     return `${chart}<div class="lc-axes"><span>المحور الأفقي: السنوات</span><span>المحور الرأسي: القيمة بالريال</span></div>${weightsHTML(mix)}<p class="small mt8" style="line-height:1.8">${note}</p>`;
   }
   const portBalance = (id) => (S.portfolios.find((x) => x.id === id) || {}).balance || 0;
@@ -394,8 +422,8 @@
     st.events = S.events || {};
     st.user = { name: 'أبو فيصل', nid: '1012345678', phone: '501230789', demo: true };
     st.passcode = '111111';
-    const now = new Date(), A = advise(500000, 2500, 'mid', false);
-    st.plan = { mode: 'auto', mix: A.mix, age: 63, pension: 9000, savings: 500000, target: 2500, risk: 'mid', payDay: PAY_DAY, dest: 'bank', paused: false, ack: needsAck(A.mix), ackDate: addMonths(now, -4).toISOString(), balance: 500000, funded: true, createdAt: addMonths(now, -4).toISOString() };
+    const now = new Date(), A = { mix: cleanMix(bestMix(ADV_ALL, RISK_CAP)) }; // حالة أبو فيصل من النموذج المالي
+    st.plan = { mode: 'auto', mix: A.mix, age: 61, pension: 12500, savings: 450000, target: 2500, risk: 'mid', cap: RISK_CAP, payDay: PAY_DAY, dest: 'bank', paused: false, ack: needsAck(A.mix), ackDate: addMonths(now, -4).toISOString(), balance: 450000, funded: true, createdAt: addMonths(now, -4).toISOString() };
     const amt = income(st.plan);
     for (let i = 3; i >= 1; i--) {
       const base = addMonths(now, -i);
@@ -700,7 +728,7 @@
     { k: 'risk', type: 'risk', title: 'كيف تصف تقبّلك للمخاطر؟', sub: `نبني لك أفضل محفظة من كل المحافظ حسب نسبة المخاطر على رأس المال خلال 12 شهر؛ فوق ${RISK_CAP}% يتطلب موافقتك الصريحة` },
   ];
   const draft = () => {
-    const d = S.draft || (S.draft = { age: 62, hasIncome: null, pension: 9000, savings: 500000, target: 2500, auto: null, autoAmt: 1000, risk: null, over: false });
+    const d = S.draft || (S.draft = { age: 61, hasIncome: null, pension: 12500, savings: 450000, target: 2500, auto: null, autoAmt: 1000, risk: null, over: false });
     if (d.autoAmt == null) d.autoAmt = 1000;
     if (d.age == null) d.age = 62;
     return d;
@@ -787,7 +815,7 @@
     const upd = (v) => {
       d.cap = v; amt.innerHTML = capTxt(v);
       root.querySelectorAll('[data-chip]').forEach((c) => c.classList.toggle('on', +c.dataset.chip === v));
-      const p = { mode: 'custom', mix: cleanMix(bestMix(ADV_ALL, v)), balance: d.savings };
+      const p = { mode: 'custom', mix: cleanMix(bestMix(ADV_ALL, v)), balance: d.savings, target: d.target };
       root.querySelector('#cap-inc').innerHTML = money(income(p));
       root.querySelector('#cap-risk').textContent = riskLabel(p);
       root.querySelector('#cap-warn').hidden = v <= RISK_CAP;
@@ -835,9 +863,9 @@
       const d = draft(); if (!d.risk || !RISK[d.risk]) d.risk = 'mid';
       const A = adviseD(d), mix = A.mix, capShown = A.cap != null ? A.cap : RISK_CAP;
       d.advMix = mix; save();
-      const p = { mode: 'auto', mix, balance: d.savings }, monthly = d.auto ? d.autoAmt : 0;
+      const p = { mode: 'auto', mix, balance: d.savings, target: d.target }, monthly = d.auto ? d.autoAmt : 0;
       const inc = income(p), cover = d.target ? inc / d.target * 100 : 100, full = inc >= d.target - 0.5, total = (d.pension || 0) + inc, L = mixLoss(mix);
-      const need = d.target * 12 / Math.max(mixRate(mix) / 100, 1e-6);
+      const need = d.target * 12 / Math.max(annuityF(netRate(mix)), 1e-6);
       let alert = '';
       if (!A.ok && A.why === 'max') {
         alert = `<div class="big-warn">${ic('alert')}<div><p>حتى مع تقبّل مخاطر أعلى، أقصى دخل نقدر نوصله ${money(inc, 0)} شهريًا.</p><p class="sm">لتحقيق هدفك (${money(d.target, 0)}) زِد مبلغ الاستثمار إلى ${money(need, 0)} تقريبًا.</p><div class="btns"><button class="btn soft" data-action="backToCap">ارجع لحد المخاطر ${RISK_CAP}%</button></div></div></div>`;
@@ -868,7 +896,7 @@
           <div class="row between mt8"><span class="small">موعد الدفعة</span><span class="small">يوم ${PAY_DAY} من كل شهر</span></div>
           <div class="row between mt8"><span class="small">الاستقطاع الشهري</span><span class="small">${monthly ? money(monthly, 0) : 'بدون'}</span></div>
           <div class="row between mt8"><span class="small">مخاطر رأس المال خلال 12 شهر</span><span class="small ${L > RISK_CAP ? 'neg' : ''}">${fmt(L, 1)}% (${A.cap != null ? `اخترت ${capTxt(capShown)}` : `الحد ${RISK_CAP}%`})</span></div></div>
-        <p class="small mt12">الأرقام تقديرية بعائد متوقع توضيحي ${fmt(mixRate(mix), 2)}% سنويًا (توزيعات + نمو) قبل رسوم الإدارة، وليست ضمانًا للعائد.</p>
+        <p class="small mt12">الأرقام تقديرية بعائد متوقع ${fmt(mixRate(mix), 2)}% سنويًا (توزيعات + نمو) قبل الرسوم. الدفعة الشهرية تُصرف 15 سنة من العائد ورأس المال بعد رسوم الإدارة ${FEE_PCT}% والزكاة ${ZAKAT_PCT}%، ودرجة المخاطر شاملة الرسوم. وليست ضمانًا للعائد.</p>
         <div class="cta-bottom">
           <button class="btn" data-action="approvePlan">اعتماد الخطة</button>
           <button class="btn soft mt12" data-action="designOwn">${ic('pencil')}صمّم خطتك بنفسك</button>
@@ -911,7 +939,7 @@
         <ul class="checks" style="margin:0 0 16px">
           <li style="align-items:flex-start">${ic('check')}<span>${custom ? 'محافظ الأسهم والمتنوعة (نمو) والمستقبل قيمتها قد تنخفض بشكل كبير' : 'قيمة الأسهم وصناديق الريت قد تنخفض'}، والدفعة الشهرية قد تتغير.</span></li>
           <li style="align-items:flex-start">${ic('check')}<span>${custom ? 'نوصي المتقاعد ألا تتجاوز المحافظ عالية المخاطر 30% من خطته.' : 'الحد الأعلى لسلة النمو 30% من الخطة لحمايتك.'}</span></li>
-          <li style="align-items:flex-start">${ic('check')}<span>رسوم إدارة الجزء عالي المخاطر أعلى (${fmt(FEE.growthHigh * 100, 1)}% سنويًا بدل ${fmt(FEE.base * 100, 1)}%).</span></li>
+          <li style="align-items:flex-start">${ic('check')}<span>رسوم الإدارة ${FEE_PCT}% سنويًا، ودرجة المخاطر المعروضة شاملة الرسوم.</span></li>
         </ul>
         <div class="card mb16"><div class="row between"><span class="small">تقييم الملاءمة</span><b class="${over ? '' : 'pos'}" style="${over ? 'color:#B7791F' : ''}">${over ? 'أعلى من الموصى به' : 'مناسب'}</b></div><p class="small mt8">${kind === 'over' ? `تجاوزت حد المخاطر ${RISK_CAP}% للوصول لدخلك المستهدف، ورأس مالك معرّض لانخفاض أكبر.` : over ? 'نسبة المحافظ عالية المخاطر أعلى من 30%، فكّر في تخفيضها لحماية دخلك.' : 'مدة استثمار طويلة، ومعاش منتظم يغطي المصاريف الأساسية.'}</p></div>
         <label class="check"><input type="checkbox" id="ack"/><span>أقر بأنني اطلعت على المخاطر والرسوم، وأرغب في المتابعة.</span></label>
@@ -947,7 +975,7 @@
       const bal = fromEdit ? S.plan.balance : S.draft.savings;
       const monthly = fromEdit ? ((S.auto && S.auto.sanad && S.auto.sanad.amount) || 0) : (S.draft.auto ? S.draft.autoAmt : 0);
       const sum = () => MIX_ORDER.reduce((s, id) => s + (B[id] || 0), 0);
-      const pseudo = () => ({ mode: 'custom', mix: B, balance: bal });
+      const pseudo = () => ({ mode: 'custom', mix: B, balance: bal, target: fromEdit ? S.plan.target : (S.draft && S.draft.target) || 0 });
       const paintProj = () => { $('#mx-proj').innerHTML = sum() === 100 ? projHTML(bal, cleanMix(B), monthly) : '<p class="small center" style="padding:24px 0">أكمل التوزيع إلى 100% عشان يظهر الرسم</p>'; };
       bindReinv(root, '#mx-reinv', paintProj);
       const paint = () => {
@@ -1265,7 +1293,7 @@
         <div class="pf-head">${iconCircle(p, 'lg')}<div><div class="name">محفظة ${p.name}</div><a class="link" data-go="/stats/${id}">احصائيات المحفظة ${ic('chevL')}</a></div></div>
         ${bal ? `<div class="kv" style="margin:0 0 16px"><span>رصيدك</span><b>${money(bal)}</b></div>` : ''}
         <div class="pf-hero">${hero}</div>
-        <p class="pf-text">${text}${id === 'saving' ? '، تصل إلى <span class="pos">+5.85%</span> سنويًا' : id === 'corp-sukuk' ? `، بمتوسط عائد سنوي <span class="pos">▲${fmt(p.rate, 2)}%</span>` : ` حققت متوسط سنوي <span class="pos">▲${fmt(p.rate, 2)}%</span>`}</p>
+        <p class="pf-text">${text}${id === 'saving' ? `، بمتوسط <span class="pos">+${fmt(p.rate, 2)}%</span> سنويًا` : id === 'corp-sukuk' ? `، بمتوسط عائد سنوي <span class="pos">▲${fmt(p.rate, 2)}%</span>` : ` حققت متوسط سنوي <span class="pos">▲${fmt(p.rate, 2)}%</span>`}</p>
         ${id === 'corp-sukuk' ? sukukSection() : `<button class="btn" data-go="/deposit/${id}">${ic('plus')}إيداع</button>
         <div class="hold-card">${p.holdings.map(([n, t, v]) => `<div class="hold"><span class="pct">${v}%</span><span class="nm">${n}</span><span class="tk">${t}</span>${ring(v)}</div>`).join('')}</div>`}
         <div class="kv"><span>درجة المخاطر</span><b>${p.risk}</b></div>
