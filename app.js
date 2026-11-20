@@ -98,9 +98,9 @@
   };
   const KEYS = ['liq', 'fix', 'gro'];
   const RISK = {
-    low: { name: 'محافظ', meta: 'الأولوية لحماية رأس المال', alloc: { liq: 30, fix: 50, gro: 20 }, icon: 'shield', types: ['saving', 'corp-sukuk', 'div-safe'] },
-    mid: { name: 'متوازن', meta: 'دخل ثابت مع نمو معتدل', alloc: { liq: 25, fix: 50, gro: 25 }, icon: 'scale', types: ['saving', 'corp-sukuk', 'div-safe', 'dividends', 'reit', 'div-bal'] },
-    high: { name: 'نمو أعلى', meta: 'قد يتطلب توقيع إقرار المخاطر', alloc: { liq: 25, fix: 45, gro: 30 }, icon: 'trend', types: ['saving', 'corp-sukuk', 'div-safe', 'dividends', 'reit', 'div-bal', 'div-growth', 'div-high', 'saudi'] },
+    low: { name: 'محافظ', meta: 'الأولوية لحماية رأس المال · مخاطر أقل من 10%', alloc: { liq: 30, fix: 50, gro: 20 }, icon: 'shield', types: ['saving', 'corp-sukuk', 'div-safe'] },
+    mid: { name: 'متوازن', meta: 'أعلى دخل بمخاطر قريبة من 10% بدون ما توصلها', alloc: { liq: 25, fix: 50, gro: 25 }, icon: 'scale', types: ['saving', 'corp-sukuk', 'div-safe', 'dividends', 'reit', 'div-bal'] },
+    high: { name: 'نمو أعلى', meta: 'مخاطر فوق 10% · يتطلب توقيع إقرار المخاطر', alloc: { liq: 25, fix: 45, gro: 30 }, icon: 'trend', types: ['saving', 'corp-sukuk', 'div-safe', 'dividends', 'reit', 'div-bal', 'div-growth', 'div-high', 'saudi'] },
   };
   const RISK_CAP = 10; // الحد الأعلى لمخاطر رأس المال: أقصى انخفاض متوقع خلال 12 شهر (%)
   const PAY_DAY = 27;  // يوم الدفعة الشهرية ثابت لكل الخطط
@@ -210,9 +210,15 @@
 
   /* أفضل محفظة لنسبة مخاطر يحددها العميل: بحث شامل بخطوات 5% داخل حدود كل نوع،
      أعلى عائد متوقع بشرط أن درجة المخاطر المعروضة (لأقرب خانة عشرية) أقل من النسبة المختارة */
+  // محافظ: يختار نسبة أقل من 10% · متوازن: أقرب ما يكون لـ10% بدون ما يوصلها (ثابت) · نمو أعلى: يختار نسبة فوق 10% بإقرار
   const PICK = {
-    mid: { min: 3, max: 10, step: 0.5, def: 8, chips: [5, 8, 10] },
-    high: { min: 5, max: 25, step: 0.5, def: 15, chips: [10, 15, 20] },
+    low: { min: 3.5, max: 9, step: 0.5, def: 6, chips: [4, 6, 8] },
+    high: { min: 10.5, max: 25, step: 0.5, def: 15, chips: [12, 15, 20] },
+  };
+  const RISK_TAGS = {
+    low: ['أقل من 10%', 'تحدد نسبة المخاطر بنفسك', 'جميع المحافظ'],
+    mid: ['أقرب ما يكون لـ10% بدون ما يوصلها', 'جميع المحافظ'],
+    high: ['فوق 10% بإقرار المخاطر', 'تحدد نسبة المخاطر بنفسك', 'جميع المحافظ'],
   };
   const BEST_CACHE = {};
   function bestMix(ids, cap) {
@@ -242,17 +248,13 @@
     BEST_CACHE[key] = out;
     return { ...out };
   }
-  const capOf = (d) => (d.risk === 'best' ? RISK_CAP : PICK[d.risk] ? (d.cap || PICK[d.risk].def) : null);
+  const capOf = (d) => (PICK[d.risk] ? (d.cap || PICK[d.risk].def) : RISK_CAP); // متوازن (وأي قيمة قديمة) = أقل من 10%
   const capTxt = (v) => `أقل من ${fmt(v, v % 1 ? 1 : 0)}%`;
-  // المستشار حسب اختيار العميل: أفضل محفظة (كل الأنواع، أقل من 10%) أو نسبة يختارها، وإلا المنطق السابق
+  // المستشار: دائمًا أفضل محفظة من كل المحافظ (أعلى عائد) بدرجة مخاطر أقل من النسبة المحددة لوصف العميل
   function adviseD(d) {
-    const cap = capOf(d);
-    if (cap != null) {
-      const pool = d.risk === 'best' ? ADV_ALL : RISK[d.risk].types, mix = cleanMix(bestMix(pool, cap));
-      const ok = mixRate(mix) >= reqRate(d.savings, d.target) - 1e-9;
-      return { mix, ok, why: ok ? null : 'pick', cap };
-    }
-    return advise(d.savings, d.target, d.risk || 'mid', d.over);
+    const cap = capOf(d), mix = cleanMix(bestMix(ADV_ALL, cap));
+    const ok = mixRate(mix) >= reqRate(d.savings, d.target) - 1e-9;
+    return { mix, ok, why: ok ? null : 'pick', cap };
   }
 
   /* ================= الحالة ================= */
@@ -695,7 +697,7 @@
     { k: 'savings', type: 'amount', title: 'كم المبلغ اللي تبي تستثمره؟', sub: 'مكافأة نهاية الخدمة أو مدخراتك', min: 10000, max: 3000000, step: 10000, chips: [250000, 500000, 1000000] },
     { k: 'target', type: 'amount', title: 'كم تحتاج دخل إضافي كل شهر؟', sub: 'فوق معاشك التقاعدي', min: 500, max: 20000, step: 100, chips: [1500, 2500, 4000] },
     { k: 'auto', type: 'auto', title: 'تبي استقطاع شهري؟', sub: `اختياري: نودع مبلغ ثابت من حسابك يوم ${PAY_DAY} من كل شهر عشان تكبر خطتك`, amtKey: 'autoAmt', min: 100, max: 20000, step: 100, chips: [500, 1000, 2000] },
-    { k: 'risk', type: 'risk', title: 'كيف تصف تقبّلك للمخاطر؟', sub: `اختر «أعطني أفضل محفظة» ونبني لك أعلى دخل بخسارة أقل من ${RISK_CAP}% من رأس المال خلال 12 شهر، أو اختر وصفك وحدد نسبة المخاطر بنفسك` },
+    { k: 'risk', type: 'risk', title: 'كيف تصف تقبّلك للمخاطر؟', sub: `نبني لك أفضل محفظة من كل المحافظ حسب نسبة المخاطر على رأس المال خلال 12 شهر؛ فوق ${RISK_CAP}% يتطلب موافقتك الصريحة` },
   ];
   const draft = () => {
     const d = S.draft || (S.draft = { age: 62, hasIncome: null, pension: 9000, savings: 500000, target: 2500, auto: null, autoAmt: 1000, risk: null, over: false });
@@ -746,8 +748,7 @@
           <div class="cta-bottom"><button class="btn" data-action="ansAmt" data-i="${i}" ${d.auto == null ? 'disabled' : ''}>التالي</button></div>`;
       } else if (q.type === 'risk') {
         const opt = (k, icon, name, meta, tags) => `<button class="opt ${d.risk === k ? 'selected' : ''}" data-action="ans" data-i="${i}" data-v="${k}">${ic(icon)}<span class="grow">${name}<div class="meta">${meta}</div><div class="opt-tags">${tags}</div></span></button>`;
-        body = opt('best', 'target', 'أعطني أفضل محفظة', `أعلى دخل من كل المحافظ بخسارة أقل من ${RISK_CAP}% من رأس المال خلال 12 شهر`, '<span class="tag">جميع المحافظ</span><span class="tag">بدون تجاوز حد المخاطر</span>')
-          + Object.entries(RISK).map(([k, r]) => opt(k, r.icon, r.name, PICK[k] ? `${r.meta} · تحدد نسبة المخاطر بنفسك` : r.meta, r.types.map((id) => `<span class="tag">${PORTS[id].name}</span>`).join(''))).join('');
+        body = Object.entries(RISK).map(([k, r]) => opt(k, r.icon, r.name, r.meta, RISK_TAGS[k].map((t) => `<span class="tag">${t}</span>`).join(''))).join('');
         const P = PICK[d.risk];
         if (P) {
           if (d.cap == null || d.cap < P.min || d.cap > P.max) d.cap = P.def;
@@ -786,7 +787,7 @@
     const upd = (v) => {
       d.cap = v; amt.innerHTML = capTxt(v);
       root.querySelectorAll('[data-chip]').forEach((c) => c.classList.toggle('on', +c.dataset.chip === v));
-      const p = { mode: 'custom', mix: cleanMix(bestMix(RISK[d.risk].types, v)), balance: d.savings };
+      const p = { mode: 'custom', mix: cleanMix(bestMix(ADV_ALL, v)), balance: d.savings };
       root.querySelector('#cap-inc').innerHTML = money(income(p));
       root.querySelector('#cap-risk').textContent = riskLabel(p);
       root.querySelector('#cap-warn').hidden = v <= RISK_CAP;
@@ -815,7 +816,7 @@
     const i = +el.dataset.i, q = QS[i], d = draft();
     if (q.type === 'yn' && d.hasIncome == null) d.hasIncome = true;
     if (q.type === 'auto' && d.auto == null) d.auto = false;
-    if (q.type === 'risk' && !d.risk) d.risk = 'best';
+    if (q.type === 'risk' && !d.risk) d.risk = 'mid';
     track('step_skipped'); nextQ(i);
   };
   ACTIONS.typeAmount = (el) => {
@@ -831,7 +832,7 @@
     auth: true,
     view: () => {
       if (!S.draft) { go('/income', { replace: true }); return null; }
-      const d = draft(); if (!d.risk) d.risk = 'best';
+      const d = draft(); if (!d.risk || !RISK[d.risk]) d.risk = 'mid';
       const A = adviseD(d), mix = A.mix, capShown = A.cap != null ? A.cap : RISK_CAP;
       d.advMix = mix; save();
       const p = { mode: 'auto', mix, balance: d.savings }, monthly = d.auto ? d.autoAmt : 0;
@@ -884,7 +885,7 @@
   // قبول أقرب دخل: نشيل التنبيه ونبقى في نفس الشاشة
   ACTIONS.acceptClosest = () => { draft().closest = true; track('accept_closest'); save(); render(); toast('تم اعتماد أقرب دخل لهدفك'); };
   ACTIONS.backToCap = () => { const d = draft(); d.over = false; d.closest = false; save(); render(); };
-  ACTIONS.changeCap = () => { const d = draft(); d.closest = false; if (d.risk === 'best') d.risk = 'high'; save(); go(`/income/q/${QS.length}`); };
+  ACTIONS.changeCap = () => { const d = draft(); d.closest = false; if (!PICK[d.risk] || d.risk === 'low') d.risk = 'high'; save(); go(`/income/q/${QS.length}`); };
   function createPlan(extra, ack) {
     const d = draft();
     S.plan = Object.assign({ age: d.age || 62, pension: d.pension || 0, savings: d.savings, target: d.target, risk: d.risk, cap: capOf(d), payDay: PAY_DAY, dest: 'bank', paused: false, ack: !!ack, ackDate: ack ? new Date().toISOString() : null, balance: d.savings, funded: false, payLater: false, createdAt: new Date().toISOString() }, extra);
