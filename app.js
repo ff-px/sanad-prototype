@@ -293,7 +293,7 @@
     return defaultState();
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* تجاهل */ } }
-  function track(ev) { S.events[ev] = (S.events[ev] || 0) + 1; save(); try { window.sanadTrack && window.sanadTrack(ev); } catch (e) {} }
+  function track(ev, props) { S.events[ev] = (S.events[ev] || 0) + 1; save(); try { window.sanadTrack && window.sanadTrack(ev, props); } catch (e) {} }
 
   const vToday = () => addMonths(new Date(), S.simOffset || 0);
   function nextPayDate(day, from = vToday()) {
@@ -487,7 +487,7 @@
     backAnim = false;
     app.scrollTop = 0;
     if (def.mount) def.mount(app.firstElementChild, params, query);
-    track('view:' + path.split('/')[1]);
+    track('view:' + path.split('/')[1], { path: path.split('?')[0] });
   }
   const later = (fn, ms) => timers.push(setTimeout(fn, ms));
 
@@ -512,7 +512,7 @@
   }
   function keypad() {
     const k = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button data-key="${n}">${n}</button>`).join('');
-    return `<div class="keypad">${k}<button class="blank" tabindex="-1" aria-hidden="true"></button><button data-key="0">0</button><button class="del" data-key="del" aria-label="حذف">${ic('del')}</button></div>`;
+    return `<div class="keypad ph-no-capture">${k}<button class="blank" tabindex="-1" aria-hidden="true"></button><button data-key="0">0</button><button class="del" data-key="del" aria-label="حذف">${ic('del')}</button></div>`;
   }
   function mountKeypad(root, onKey) {
     root.querySelectorAll('[data-key]').forEach((b) => b.addEventListener('click', () => onKey(b.dataset.key)));
@@ -927,7 +927,8 @@
     S.plan = Object.assign({ age: d.age || 62, pension: d.pension || 0, savings: d.savings, target: d.target, risk: d.risk, cap: capOf(d), payDay: PAY_DAY, dest: 'bank', paused: false, ack: !!ack, ackDate: ack ? new Date().toISOString() : null, balance: d.savings, funded: false, payLater: false, createdAt: new Date().toISOString() }, extra);
     S.auto = S.auto || {};
     if (d.auto) S.auto.sanad = { amount: d.autoAmt, day: PAY_DAY }; else delete S.auto.sanad;
-    S.history = []; S.simOffset = 0; track('plan_approved'); save();
+    S.history = []; S.simOffset = 0; save();
+    try { const pm = planMix(S.plan); track('plan_approved', { mode: S.plan.mode || 'preset', risk: S.plan.risk, risk_cap: S.plan.cap, risk_pct: +mixLoss(pm).toFixed(2), return_pct: +mixRate(pm).toFixed(2), target: S.plan.target, income: Math.round(income(S.plan)), covers_target: income(S.plan) >= (S.plan.target || 0) - 0.5, savings_band: Math.round((S.plan.savings || 0) / 50000) * 50000, ack: !!ack, auto_deposit: !!d.auto }); } catch (e) { track('plan_approved'); }
     closeSheet(true); go('/deposit/sanad?first=1');
   }
   ACTIONS.approvePlan = () => {
