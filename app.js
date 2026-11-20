@@ -423,7 +423,7 @@
     st.user = { name: 'أبو فيصل', nid: '1012345678', phone: '501230789', demo: true };
     st.passcode = '111111';
     const now = new Date(), A = { mix: cleanMix(bestMix(ADV_ALL, RISK_CAP)) }; // حالة أبو فيصل من النموذج المالي
-    st.plan = { mode: 'auto', mix: A.mix, age: 61, pension: 12500, savings: 450000, target: 2500, risk: 'mid', cap: RISK_CAP, payDay: PAY_DAY, dest: 'bank', paused: false, ack: needsAck(A.mix), ackDate: addMonths(now, -4).toISOString(), balance: 450000, funded: true, createdAt: addMonths(now, -4).toISOString() };
+    st.plan = { mode: 'auto', mix: A.mix, age: 61, pension: 12500, savings: 430000, target: 2500, risk: 'mid', cap: RISK_CAP, payDay: PAY_DAY, dest: 'bank', paused: false, ack: needsAck(A.mix), ackDate: addMonths(now, -4).toISOString(), balance: 430000, funded: true, createdAt: addMonths(now, -4).toISOString() };
     const amt = income(st.plan);
     for (let i = 3; i >= 1; i--) {
       const base = addMonths(now, -i);
@@ -728,7 +728,7 @@
     { k: 'risk', type: 'risk', title: 'كيف تصف تقبّلك للمخاطر؟', sub: `نبني لك أفضل محفظة من كل المحافظ حسب نسبة المخاطر على رأس المال خلال 12 شهر؛ فوق ${RISK_CAP}% يتطلب موافقتك الصريحة` },
   ];
   const draft = () => {
-    const d = S.draft || (S.draft = { age: 61, hasIncome: null, pension: 12500, savings: 450000, target: 2500, auto: null, autoAmt: 1000, risk: null, over: false });
+    const d = S.draft || (S.draft = { age: 61, hasIncome: null, pension: 12500, savings: 430000, target: 2500, auto: null, autoAmt: 1000, risk: null, over: false });
     if (d.autoAmt == null) d.autoAmt = 1000;
     if (d.age == null) d.age = 62;
     return d;
