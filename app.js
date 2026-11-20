@@ -109,23 +109,23 @@
   const FEE_PCT = 1, ZAKAT_PCT = 2.5, YEARS = 15; // الرسوم والزكاة السنوية (%) ومدة الخطة
 
   const PORTS = {
-    saving: { name: 'الادخار', short: 'صناديق أسواق النقد', dy: 4.5, hex: '#9FB3FB', tk: 'MMF', icon: 'wallet', style: 'solid', desc: 'عوائد يومية بمتوسط <span class="pos">+4.5%</span> سنويًا', rate: 4.5, risk: 'منخفضة جدًا', vol: 0.0006,
+    saving: { name: 'الادخار', short: 'صناديق أسواق النقد', dy: 5.85, hex: '#9FB3FB', tk: 'MMF', icon: 'wallet', style: 'solid', desc: 'عوائد يومية بمتوسط <span class="pos">+5.85%</span> سنويًا', rate: 5.85, risk: 'منخفضة جدًا', vol: 0.0006,
       hero: 'ادّخر بذكاء وخلّ فلوسك تشتغل كل يوم!', text: 'عوائد يومية من صناديق أسواق النقد المتوافقة مع الشريعة', holdings: [['صناديق أسواق النقد', 'MMF', 100]] },
     'div-safe': { name: 'المتنوعة (آمنة)', short: 'تنويع منخفض المخاطر', dy: 4.0, hex: '#7C8CF0', tk: 'MULTI', icon: 'scale', rate: 4.44, risk: 'منخفضة', vol: 0.003, parent: 'diversified',
-      holdings: [['صكوك', 'SUKUK', 50], ['صناديق أسواق النقد', 'MMF', 25], ['أسهم عالمية', 'GLOBAL', 15], ['عقارات', 'REIT', 10]] },
-    'div-bal': { name: 'المتنوعة (متوازنة)', short: 'تنويع متوازن', dy: 3.5, hex: '#5B6BE6', tk: 'MULTI', icon: 'scale', rate: 6.5, risk: 'متوسطة', vol: 0.006, parent: 'diversified',
-      holdings: [['أسهم أمريكية', 'US-EQ', 35], ['الأسهم السعودية', 'TASI', 20], ['الصكوك', 'SUKUK', 30], ['عقارات', 'REIT', 15]] },
-    'div-growth': { name: 'المتنوعة (نمو)', short: 'تنويع بنمو أعلى', dy: 2.5, hex: '#3442C2', tk: 'MULTI', icon: 'scale', rate: 8.5, risk: 'مرتفعة', vol: 0.009, parent: 'diversified',
-      holdings: [['أسهم أمريكية', 'US-EQ', 50], ['الأسهم السعودية', 'TASI', 25], ['الصكوك', 'SUKUK', 15], ['عقارات', 'REIT', 10]] },
-    'div-high': { name: 'المتنوعة (نمو عالي)', short: 'تنويع بنمو عالي', dy: 1.5, hex: '#232C93', tk: 'MULTI', icon: 'scale', rate: 10.5, risk: 'مرتفعة جدًا', vol: 0.012, parent: 'diversified',
-      holdings: [['أسهم أمريكية', 'US-EQ', 60], ['الأسهم السعودية', 'TASI', 30], ['عقارات', 'REIT', 10]] },
-    dividends: { name: 'التوزيعات', short: 'أسهم وريت وصكوك موزّعة', dy: 5.5, hex: '#13A57A', tk: 'DIV', icon: 'coins', isNew: true, desc: 'لزيادة دخلك بتوزيعات شهرية', tags: ['أسهم', 'عقارات', 'صناديق أسواق النقد', 'صكوك'], rate: 7.0, risk: 'متوسطة', vol: 0.005,
+      holdings: [['صكوك', 'SUKUK', 70], ['أسهم عالمية', 'GLOBAL', 10], ['ذهب', 'GOLD', 10], ['أسهم سعودية', 'TASI', 5], ['عقار', 'REIT', 5]] },
+    'div-bal': { name: 'المتنوعة (متوازنة)', short: 'تنويع متوازن', dy: 3.95, hex: '#5B6BE6', tk: 'MULTI', icon: 'scale', rate: 7.97, risk: 'متوسطة', vol: 0.006, parent: 'diversified',
+      holdings: [['أسهم عالمية', 'GLOBAL', 40], ['صكوك', 'SUKUK', 30], ['أسهم سعودية', 'TASI', 10], ['ذهب', 'GOLD', 10], ['عقار', 'REIT', 10]] },
+    'div-growth': { name: 'المتنوعة (نمو)', short: 'تنويع بنمو أعلى', dy: 3.0, hex: '#3442C2', tk: 'MULTI', icon: 'scale', rate: 11.37, risk: 'مرتفعة', vol: 0.009, parent: 'diversified',
+      holdings: [['أسهم عالمية', 'GLOBAL', 70], ['ذهب', 'GOLD', 10], ['صكوك', 'SUKUK', 10], ['أسهم سعودية', 'TASI', 6], ['فضة', 'SILVER', 4]] },
+    'div-high': { name: 'المتنوعة (نمو عالي)', short: 'تنويع بنمو عالي', dy: 2.35, hex: '#232C93', tk: 'MULTI', icon: 'scale', rate: 16.04, risk: 'مرتفعة جدًا', vol: 0.012, parent: 'diversified',
+      holdings: [['أسهم تقنية عالمية', 'TECH', 45], ['أسهم أمريكية شرعية', 'US-EQ', 35], ['أسهم عالمية غير أمريكية', 'GLOBAL', 10], ['أسهم سعودية', 'TASI', 5], ['بيتكوين', 'BTC', 5]] },
+    dividends: { name: 'التوزيعات', short: 'أسهم وريت وصكوك موزّعة', dy: 9.0, hex: '#13A57A', tk: 'DIV', icon: 'coins', isNew: true, desc: 'لزيادة دخلك بتوزيعات شهرية', tags: ['أسهم', 'عقارات', 'صناديق أسواق النقد', 'صكوك'], rate: 9.0, risk: 'متوسطة', vol: 0.005,
       hero: 'دخل شهري من توزيعات أرباح مختارة', holdings: [['أسهم توزيعات', 'DIV', 40], ['صناديق الريت', 'REIT', 25], ['صكوك', 'SUKUK', 20], ['صناديق أسواق النقد', 'MMF', 15]] },
-    'corp-sukuk': { name: 'صكوك الشركات', short: 'صكوك شركات شرعية', dy: 6.5, hex: '#2F7BDB', tk: 'SUKUK', icon: 'landmark', isNew: true, desc: 'استثمر فقط في صكوك الشركات المتوافقة مع الشريعة', tags: ['صكوك شركات شرعية', 'عوائد ثابتة', 'توزيعات دورية'], rate: 6.5, risk: 'منخفضة', vol: 0.0015,
+    'corp-sukuk': { name: 'صكوك الشركات', short: 'صكوك شركات شرعية', dy: 11.28, hex: '#2F7BDB', tk: 'SUKUK', icon: 'landmark', isNew: true, desc: 'استثمر فقط في صكوك الشركات المتوافقة مع الشريعة', tags: ['صكوك شركات شرعية', 'عوائد ثابتة', 'توزيعات دورية'], rate: 11.28, risk: 'منخفضة', vol: 0.0015,
       hero: 'صكوك شركات شرعية بعوائد ثابتة', text: 'فرص استثمارية محدودة المدة في صكوك شركات سعودية معتمدة من اللجنة الشرعية، بعوائد ثابتة وتوزيعات دورية (شهرية، ربعية، نصف سنوية)', holdings: [] },
-    reit: { name: 'الأسهم العقارية', short: 'صناديق ريت وأسهم عقارية', dy: 6.5, hex: '#F29E4C', tk: 'REIT', icon: 'building', isNew: true, desc: 'للاستثمار في صناديق الريت وأسهم شركات العقار', tags: ['صناديق ريت', 'أسهم عقارية', 'توزيعات نقدية'], rate: 7.0, risk: 'متوسطة', vol: 0.008,
-      hero: 'استثمر في العقار بدون ما تشتري عقار', text: 'صناديق ريت وأسهم شركات عقارية توزّع أرباحًا نقدية', holdings: [['صناديق الريت السعودية', 'REIT', 65], ['أسهم التطوير العقاري', 'RE-EQ', 35]] },
-    saudi: { name: 'السوق السعودي', short: 'أسهم سعودية بإدارة نشطة', dy: 2.5, hex: '#E86A5E', tk: 'TASI', icon: 'palm', desc: 'لعوائد عالية في أسهم مختارة بإدارة نشطة', tags: ['أسهم سعودية (نشطة)'], rate: 9.5, risk: 'مرتفعة', vol: 0.011,
+    reit: { name: 'صناديق الدخل العقاري', short: 'ملكية جزئية في عقارات مدرّة للدخل', dy: 6.5, hex: '#F29E4C', tk: 'RE-INC', icon: 'building', isNew: true, desc: 'ملكية جزئية في عقارات مدرّة للدخل عبر صناديق الدخل العقاري', tags: ['صناديق دخل عقاري', 'ملكية جزئية', 'توزيعات نقدية'], rate: 7.5, risk: 'متوسطة', vol: 0.008,
+      hero: 'استثمر في العقار بدون ما تشتري عقار', text: 'ملكية جزئية في عقارات مدرّة للدخل عبر صناديق الدخل العقاري، بتوزيعات نقدية دورية', holdings: [['صناديق الدخل العقاري (ملكية جزئية)', 'RE-INC', 100]] },
+    saudi: { name: 'السوق السعودي', short: 'أسهم سعودية بإدارة نشطة', dy: 2.5, hex: '#E86A5E', tk: 'TASI', icon: 'palm', desc: 'لعوائد عالية في أسهم مختارة بإدارة نشطة', tags: ['أسهم سعودية (نشطة)'], rate: 20.83, risk: 'مرتفعة', vol: 0.011,
       hero: 'اقتنص فرص السوق السعودي', holdings: [['أسهم سعودية مختارة', 'TASI', 100]] },
     trading: { name: 'التداول', icon: 'chart', style: 'dark', desc: 'تداول الأسهم بنفسك بتجربة سهلة', brand: 'مدعومة من أبيان تداول', rate: null, risk: 'حسب اختيارك' },
     future: { name: 'المستقبل', short: 'بيتكوين وشركات تقنية', dy: 0, hex: '#8B5CF6', tk: 'IBIT', icon: 'rocket', desc: 'للاستثمار في صندوق البيتكوين والشركات التقنية', tags: ['صندوق البيتكوين', 'شركات التقنية'], rate: 18, risk: 'عالية جدًا', vol: 0.03,
@@ -150,30 +150,33 @@
      الدخل الشهري = الرصيد × العائد المتوقع الكلي (توزيعات + نمو) ÷ 12. */
   const ADV = {
     saving: { loss: 0.5, min: 10, max: 40 },
-    'corp-sukuk': { loss: 6.5, min: 0, max: 40 },
-    'div-safe': { loss: 6.3, min: 0, max: 40 },
-    dividends: { loss: 14.4, min: 0, max: 30 },
-    reit: { loss: 24.5, min: 0, max: 25 },
-    'div-bal': { loss: 14.2, min: 0, max: 30 },
-    'div-growth': { loss: 16.9, min: 0, max: 20 },
-    'div-high': { loss: 19.6, min: 0, max: 15 },
-    saudi: { loss: 30, min: 0, max: 15 },
-    future: { loss: 55, min: 0, max: 5 },
+    'corp-sukuk': { loss: 6, min: 0, max: 40 },
+    'div-safe': { loss: 6.99, min: 0, max: 40 },
+    dividends: { loss: 14.37, min: 0, max: 30 },
+    reit: { loss: 10.66, min: 0, max: 25 },
+    'div-bal': { loss: 12.04, min: 0, max: 30 },
+    'div-growth': { loss: 15.85, min: 0, max: 20 },
+    'div-high': { loss: 26, min: 0, max: 15 },
+    saudi: { loss: 28, min: 0, max: 15 },
+    future: { loss: 48.09, min: 0, max: 5 },
   };
   const ADV_ALL = ['saving', 'corp-sukuk', 'div-safe', 'dividends', 'reit', 'div-bal', 'div-growth', 'div-high', 'saudi'];
   const mixRate = (w) => Object.keys(w).reduce((s, id) => s + (w[id] || 0) * (PORTS[id] ? PORTS[id].rate : 0) / 100, 0); // %
-  /* نموذج المخاطر (نفس ورقة RiskModel في النموذج المالي): أقصى انخفاض خلال 12 شهر مع مراعاة الارتباط بين الأصول
-     الأصول: نقد، صكوك، أسهم عالمية، أسهم سعودية، أسهم توزيعات، ريت، تطوير عقاري، بيتكوين */
-  const AC_LOSS = [0.5, 6.5, 20, 30, 25, 22, 35, 85];
+  /* نموذج المخاطر (نفس ورقة RiskModel في النموذج المالي): أقصى انخفاض في سنة أزمة (12 شهر) مع مراعاة الارتباط.
+     المكونات: نقد، صكوك، أسهم عالمية، أسهم تقنية، أسهم سعودية، أسهم توزيعات، عقار (ريت)، ذهب، فضة، بيتكوين، صكوك الشركات، صناديق الدخل العقاري.
+     تركيبة محافظ أبيان من موقع أبيان المالية؛ صكوك الشركات وصناديق الدخل العقاري أرقام الفريق. */
+  const NC = 12;
+  const AC_LOSS = [0.5, 6, 20, 33, 28, 25, 22, 15, 30, 65, 6, 10.66];
   const AC_CORR = (() => { const R = AC_LOSS.map((_, i) => AC_LOSS.map((__, j) => (i === j ? 1 : 0)));
-    [[1, 2, .3], [1, 3, .2], [1, 4, .2], [1, 5, .3], [1, 6, .2], [2, 3, .5], [2, 4, .45], [2, 5, .4], [2, 6, .45], [3, 4, .9], [3, 5, .6], [3, 6, .8], [4, 5, .6], [4, 6, .7], [5, 6, .7], [7, 2, .4], [7, 3, .2], [7, 4, .2], [7, 5, .2], [7, 6, .2], [7, 1, .1]]
+    [[1, 2, 0.3], [1, 3, 0.25], [1, 4, 0.2], [1, 5, 0.2], [1, 6, 0.3], [1, 7, 0.3], [1, 8, 0.2], [1, 9, 0.1], [1, 10, 0.9], [1, 11, 0.2], [2, 3, 0.9], [2, 4, 0.5], [2, 5, 0.45], [2, 6, 0.4], [2, 7, 0.1], [2, 8, 0.3], [2, 9, 0.5], [2, 10, 0.3], [2, 11, 0.45], [3, 4, 0.45], [3, 5, 0.4], [3, 6, 0.35], [3, 7, 0.05], [3, 8, 0.25], [3, 9, 0.6], [3, 10, 0.25], [3, 11, 0.4], [4, 5, 0.9], [4, 6, 0.6], [4, 7, 0.1], [4, 8, 0.2], [4, 9, 0.3], [4, 10, 0.2], [4, 11, 0.8], [5, 6, 0.6], [5, 7, 0.1], [5, 8, 0.2], [5, 9, 0.25], [5, 10, 0.2], [5, 11, 0.7], [6, 7, 0.15], [6, 8, 0.2], [6, 9, 0.3], [6, 10, 0.3], [6, 11, 0.7], [7, 8, 0.8], [7, 9, 0.2], [7, 10, 0.3], [7, 11, 0.1], [8, 9, 0.3], [8, 10, 0.2], [8, 11, 0.2], [9, 10, 0.1], [9, 11, 0.25], [10, 11, 0.2]]
       .forEach(([i, j, v]) => { R[i][j] = v; R[j][i] = v; }); return R; })();
   const AC_COV = AC_LOSS.map((li, i) => AC_LOSS.map((lj, j) => AC_CORR[i][j] * li * lj));
-  const EXPO = { saving: [1, 0, 0, 0, 0, 0, 0, 0], 'div-safe': [.25, .5, .15, 0, 0, .1, 0, 0], 'div-bal': [0, .3, .35, .2, 0, .15, 0, 0], 'div-growth': [0, .15, .5, .25, 0, .1, 0, 0],
-    'div-high': [0, 0, .6, .3, 0, .1, 0, 0], saudi: [0, 0, 0, 1, 0, 0, 0, 0], 'corp-sukuk': [0, 1, 0, 0, 0, 0, 0, 0], dividends: [.15, .2, 0, 0, .4, .25, 0, 0], reit: [0, 0, 0, 0, 0, .65, .35, 0], future: [0, 0, .4, 0, 0, 0, 0, .6] };
-  const quadLoss = (x) => { let q = 0; for (let i = 0; i < 8; i++) { if (!x[i]) continue; for (let j = 0; j < 8; j++) q += x[i] * AC_COV[i][j] * x[j]; } return Math.sqrt(Math.max(q, 0)); };
+  const EXPO = { saving: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 'div-safe': [0, 0.7, 0.1, 0, 0.05, 0, 0.05, 0.1, 0, 0, 0, 0], 'div-bal': [0, 0.3, 0.4, 0, 0.1, 0, 0.1, 0.1, 0, 0, 0, 0],
+    'div-growth': [0, 0.1, 0.7, 0, 0.06, 0, 0, 0.1, 0.04, 0, 0, 0], 'div-high': [0, 0, 0.45, 0.45, 0.05, 0, 0, 0, 0, 0.05, 0, 0], saudi: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+    'corp-sukuk': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0], dividends: [0.15, 0.2, 0, 0, 0, 0.4, 0.25, 0, 0, 0, 0, 0], reit: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], future: [0, 0, 0, 0.4, 0, 0, 0, 0, 0, 0.6, 0, 0] };
+  const quadLoss = (x) => { let q = 0; for (let i = 0; i < NC; i++) { if (!x[i]) continue; for (let j = 0; j < NC; j++) q += x[i] * AC_COV[i][j] * x[j]; } return Math.sqrt(Math.max(q, 0)); };
   // درجة المخاطر = أقصى خسارة خلال 12 شهر شاملة رسوم الإدارة 1% (نفس شرط أبيان في النموذج)
-  const mixLoss = (w) => { const x = [0, 0, 0, 0, 0, 0, 0, 0]; let t = 0;
+  const mixLoss = (w) => { const x = Array(NC).fill(0); let t = 0;
     Object.keys(w).forEach((id) => { const v = (w[id] || 0) / 100; if (!v || !EXPO[id]) return; t += v; EXPO[id].forEach((e, k) => (x[k] += v * e)); });
     return t > 0 ? quadLoss(x) + FEE_PCT : 0; }; // %
   // دفعة شهرية ثابتة لمدة 15 سنة: الحد الأعلى اللي تقدر المحفظة تصرفه بعد الرسوم والزكاة (من العائد ورأس المال)
@@ -232,8 +235,9 @@
      أعلى عائد متوقع بشرط أن درجة المخاطر المعروضة (لأقرب خانة عشرية) أقل من النسبة المختارة */
   // محافظ: يختار نسبة أقل من 10% · متوازن: أقرب ما يكون لـ10% بدون ما يوصلها (ثابت) · نمو أعلى: يختار نسبة فوق 10% بإقرار
   const PICK = {
-    low: { min: 3.5, max: 9, step: 0.5, def: 6, chips: [4, 6, 8] },
-    high: { min: 10.5, max: 25, step: 0.5, def: 15, chips: [12, 15, 20] },
+    // أقل درجة مخاطر ممكنة 4.44% (40% ادخار + 40% صكوك شركات + 10% آمنة + 10% دخل عقاري) وأعلاها 11.91% ضمن حدود الأوزان
+    low: { min: 4.5, max: 9.5, step: 0.5, def: 6, chips: [5, 6, 8] },
+    high: { min: 10.5, max: 12, step: 0.5, def: 12, chips: [11, 12] },
   };
   const RISK_TAGS = {
     low: ['أقل من 10%', 'تحدد نسبة المخاطر بنفسك', 'جميع المحافظ'],
@@ -248,14 +252,14 @@
     const n = ids.length, r = ids.map((id) => PORTS[id].rate), mn = ids.map((id) => ADV[id].min), mx = ids.map((id) => ADV[id].max), E = ids.map((id) => EXPO[id]);
     const restMin = Array(n + 1).fill(0), restMax = Array(n + 1).fill(0);
     for (let i = n - 1; i >= 0; i--) { restMin[i] = restMin[i + 1] + mn[i]; restMax[i] = restMax[i + 1] + mx[i]; }
-    const all = [], w = Array(n).fill(0), x = [0, 0, 0, 0, 0, 0, 0, 0];
+    const all = [], w = Array(n).fill(0), x = Array(NC).fill(0);
     (function rec(i, left, R) {
       for (let v = mn[i]; v <= Math.min(mx[i], left); v += 5) {
         if (left - v < restMin[i + 1] || left - v > restMax[i + 1]) continue;
-        w[i] = v; for (let k = 0; k < 8; k++) x[k] += v / 100 * E[i][k];
+        w[i] = v; for (let k = 0; k < NC; k++) x[k] += v / 100 * E[i][k];
         if (i === n - 1) { if (left - v === 0) all.push([quadLoss(x) + FEE_PCT, R + v * r[i] / 100, w.slice()]); }
         else rec(i + 1, left - v, R + v * r[i] / 100);
-        for (let k = 0; k < 8; k++) x[k] -= v / 100 * E[i][k];
+        for (let k = 0; k < NC; k++) x[k] -= v / 100 * E[i][k];
       }
       w[i] = 0;
     })(0, 100, 0);
@@ -266,8 +270,9 @@
   }
   // أفضل محفظة: أعلى عائد بدرجة مخاطر (شاملة الرسوم، لأقرب خانة عشرية) أقل من النسبة المختارة
   function bestMix(ids, cap) {
-    const F = frontier(ids); let pick = F[0];
+    const F = frontier(ids); let pick = null;
     F.forEach((f) => { if (f[0] < cap - 0.05 - 1e-9) pick = f; });
+    if (!pick) pick = F[0]; // أقل مخاطرة ممكنة (النطاقات المعروضة تمنع الوصول لهنا)
     return ids.reduce((m, id, k) => (m[id] = pick[2][k], m), {});
   }
   const capOf = (d) => (PICK[d.risk] ? (d.cap || PICK[d.risk].def) : RISK_CAP); // متوازن (وأي قيمة قديمة) = أقل من 10%
@@ -321,8 +326,20 @@
     const mix = o.mix || p.mix || {}, cap = maxPay(bal, mix), t = o.target != null ? o.target : p.target;
     return t > 0 ? Math.min(t, cap) : cap;
   }
-  const split = (p, o = {}, bal = p.balance) => { const r = rawSplit(p, o, bal), s0 = Object.values(r).reduce((a, b) => a + b, 0), inc = income(p, o, bal);
-    Object.keys(r).forEach((k) => (r[k] = s0 > 0 ? r[k] / s0 * inc : 0)); return r; };
+  /* مصادر الدفعة الشهرية بصدق (نفس ورقة أبو فيصل): التوزيعات النقدية الفعلية لكل محفظة + نمو القيمة − الرسوم والزكاة،
+     والباقي من رأس المال (أو فائض يبقى في المحفظة). المجموع = الدفعة */
+  function incomeSources(p, o = {}, bal = p.balance) {
+    const mix = o.mix || planMix(p), inc = income(p, o, bal), rows = [];
+    let cash = 0, gr = 0;
+    MIX_ORDER.filter((id) => mix[id] > 0).forEach((id) => { const q = PORTS[id], v = bal * mix[id] / 100; const c = v * (q.dy || 0) / 100 / 12; cash += c; gr += v * (q.rate - (q.dy || 0)) / 100 / 12;
+      rows.push({ k: id, name: q.name, w: mix[id], hex: q.hex, amt: c, src: `توزيعات نقدية ${fmt(q.dy || 0, 2)}% سنويًا` }); });
+    const cost = bal * (FEE_PCT + ZAKAT_PCT) / 100 / 12, net = cash + gr - cost, fromCap = inc - net;
+    rows.push({ k: 'growth', name: 'نمو قيمة المحافظ', hex: '#B8C2D9', amt: gr, src: 'العائد غير النقدي (بيع جزء من الأرباح)' });
+    rows.push({ k: 'costs', name: 'الرسوم والزكاة', hex: '#E5484D', amt: -cost, src: `رسوم الإدارة ${FEE_PCT}% والزكاة ${ZAKAT_PCT}% سنويًا` });
+    rows.push(fromCap >= 0 ? { k: 'capital', name: 'من رأس المال', hex: '#F5A524', amt: fromCap, src: 'الجزء اللي ما يغطيه صافي العائد' } : { k: 'surplus', name: 'فائض يبقى في محفظتك', hex: '#13A57A', amt: fromCap, src: 'صافي العائد أعلى من الدفعة' });
+    return { rows, inc, cash, growth: gr, cost, net, fromCap };
+  }
+  const split = (p, o = {}, bal = p.balance) => ((o.mode || p.mode || 'preset') === 'preset' ? rawSplit(p, o, bal) : incomeSources(p, o, bal).rows.reduce((r, x) => (r[x.k] = x.amt, r), {}));
   const blendY = (alloc) => KEYS.reduce((s, k) => s + alloc[k] / 100 * BASKETS[k].y, 0);
   const planY = (p, o = {}) => comps(p, o).reduce((s, c) => s + c.w / 100 * c.y, 0);
   const planTR = (p, o = {}) => comps(p, o).reduce((s, c) => s + c.w / 100 * c.tr, 0);
@@ -864,6 +881,12 @@
     });
   };
 
+  // من وين تجي الدفعة في السنة الأولى: صافي العائد بعد الرسوم والزكاة، والباقي من رأس المال
+  function srcNote(p, bal, mix) {
+    const s = incomeSources(p, { mix }, bal), end = yearPath(bal, mix, s.inc)[YEARS];
+    const how = s.fromCap > 0.5 ? `${money(s.net, 0)} من صافي عائد المحفظة + <b>${money(s.fromCap, 0)} من رأس المال</b>` : `تُغطى بالكامل من صافي عائد المحفظة (${money(s.net, 0)})`;
+    return `<div class="card mt16"><p class="small" style="line-height:1.9">دفعتك في السنة الأولى: ${how} شهريًا، بعد رسوم ${FEE_PCT}% والزكاة ${ZAKAT_PCT}%. منها توزيعات نقدية ${money(s.cash, 0)} شهريًا. يبقى رصيدك بعد 15 سنة قرابة ${money(Math.max(end, 0), 0)}.</p></div>`;
+  }
   route('/income/result', {
     auth: true,
     view: () => {
@@ -891,6 +914,7 @@
       }
       return `${topbar('خطتك جاهزة', '', '/income')}
         <div class="res-head"><small>دخلك الشهري المتوقع</small><b>${money(inc)}</b><small>${A.ok ? (inc > d.target + 0.5 ? `أعلى من هدفك (${money(d.target, 0)})` : 'يغطي هدفك بالكامل') : d.closest ? `أقرب دخل لهدفك (${money(d.target, 0)})` : `من هدف ${money(d.target, 0)}`}</small></div>
+        ${srcNote(p, d.savings, mix)}
         ${alert}
         <div class="card mt16"><div class="chart-head"><b>قيمة استثمارك خلال 15 سنة</b>${reinvToggle('reinv')}</div><div id="proj" class="mt12">${projHTML(d.savings, mix, monthly)}</div></div>
         <div class="card">
@@ -1155,7 +1179,9 @@
           <div class="meta"><span>${ic('calendar')}${fmtDate(nd)}</span>${p.paused ? '' : `<span>${ic('clock')}بعد ${days} يوم</span>`}<span>${ic(p.dest === 'bank' ? 'bank' : 'refresh')}${p.dest === 'bank' ? 'تُودع في حسابك البنكي' : 'يُعاد استثمارها'}</span></div>
         </div>
         <div class="card mt16"><h3 class="h3">مصادر دفعتك</h3>
-          ${cs.map((c) => `<div class="src"><i class="sw" style="width:12px;height:12px;border-radius:4px;background:${c.hex}"></i><div class="grow"><b>${c.name} <span class="small">${c.w}%</span></b><small>${c.src}</small></div><b>${money(p.paused ? 0 : sp[c.k])}</b></div>`).join('')}
+          ${(p.mode || 'preset') === 'preset' ? cs.map((c) => `<div class="src"><i class="sw" style="width:12px;height:12px;border-radius:4px;background:${c.hex}"></i><div class="grow"><b>${c.name} <span class="small">${c.w}%</span></b><small>${c.src}</small></div><b>${money(p.paused ? 0 : sp[c.k])}</b></div>`).join('')
+            : incomeSources(p).rows.map((c) => `<div class="src"><i class="sw" style="width:12px;height:12px;border-radius:4px;background:${c.hex}"></i><div class="grow"><b>${c.name}${c.w ? ` <span class="small">${c.w}%</span>` : ''}</b><small>${c.src}</small></div><b class="${c.amt < 0 ? 'neg' : ''}">${money(p.paused ? 0 : c.amt)}</b></div>`).join('')}
+          ${(p.mode || 'preset') === 'preset' ? '' : `<p class="small mt8">تقدير شهري بالرصيد الحالي. المجموع = دفعتك ${money(p.paused ? 0 : inc)}.</p>`}
         </div>
         <div class="card"><div class="row between"><span>إجمالي ما استلمته</span><b>${money(received)}</b></div><div class="row between mt8"><span class="small">عدد الدفعات</span><span class="small">${S.history.length}</span></div><div class="row between mt8"><span class="small">دخلك الكلي مع المعاش</span><span class="small">${money((p.pension || 0) + inc, 0)}</span></div></div>
         <div class="card"><div class="row between mb16"><h3 class="h3" style="margin:0">الدفعات خلال 12 شهر</h3><b>${money(inc * 12, 0)}</b></div>
