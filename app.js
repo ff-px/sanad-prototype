@@ -208,6 +208,53 @@
     return { mix: cleanMix(polish(pool, best)), ok: false, why: over ? 'max' : hitTarget(ADV_ALL, ty, RISK_CAP) ? 'profile' : 'cap' };
   }
 
+  /* أفضل محفظة لنسبة مخاطر يحددها العميل: بحث شامل بخطوات 5% داخل حدود كل نوع،
+     أعلى عائد متوقع بشرط أن درجة المخاطر المعروضة (لأقرب خانة عشرية) أقل من النسبة المختارة */
+  const PICK = {
+    mid: { min: 3, max: 10, step: 0.5, def: 8, chips: [5, 8, 10] },
+    high: { min: 5, max: 25, step: 0.5, def: 15, chips: [10, 15, 20] },
+  };
+  const BEST_CACHE = {};
+  function bestMix(ids, cap) {
+    const key = ids.join(',') + '|' + cap;
+    if (BEST_CACHE[key]) return { ...BEST_CACHE[key] };
+    const n = ids.length, r = ids.map((id) => PORTS[id].rate), l = ids.map((id) => ADV[id].loss), mn = ids.map((id) => ADV[id].min), mx = ids.map((id) => ADV[id].max);
+    const restMin = Array(n + 1).fill(0), restMax = Array(n + 1).fill(0);
+    for (let i = n - 1; i >= 0; i--) { restMin[i] = restMin[i + 1] + mn[i]; restMax[i] = restMax[i + 1] + mx[i]; }
+    const lim = cap - 0.05 - 1e-9, w = Array(n).fill(0);
+    let best = null, bR = -1, bL = Infinity;
+    (function rec(i, left, R, L) {
+      if (i === n - 1) {
+        if (left < mn[i] || left > mx[i]) return;
+        const RR = R + left * r[i] / 100, LL = L + left * l[i] / 100;
+        if (LL < lim && (RR > bR + 1e-9 || (Math.abs(RR - bR) <= 1e-9 && LL < bL))) { w[i] = left; best = w.slice(); bR = RR; bL = LL; }
+        return;
+      }
+      for (let x = mn[i]; x <= Math.min(mx[i], left); x += 5) {
+        const L2 = L + x * l[i] / 100;
+        if (L2 >= lim) break;
+        if (left - x < restMin[i + 1] || left - x > restMax[i + 1]) continue;
+        w[i] = x; rec(i + 1, left - x, R + x * r[i] / 100, L2);
+      }
+      w[i] = 0;
+    })(0, 100, 0, 0);
+    const out = best ? ids.reduce((m, id, k) => (m[id] = best[k], m), {}) : greedy(ids, 60);
+    BEST_CACHE[key] = out;
+    return { ...out };
+  }
+  const capOf = (d) => (d.risk === 'best' ? RISK_CAP : PICK[d.risk] ? (d.cap || PICK[d.risk].def) : null);
+  const capTxt = (v) => `أقل من ${fmt(v, v % 1 ? 1 : 0)}%`;
+  // المستشار حسب اختيار العميل: أفضل محفظة (كل الأنواع، أقل من 10%) أو نسبة يختارها، وإلا المنطق السابق
+  function adviseD(d) {
+    const cap = capOf(d);
+    if (cap != null) {
+      const pool = d.risk === 'best' ? ADV_ALL : RISK[d.risk].types, mix = cleanMix(bestMix(pool, cap));
+      const ok = mixRate(mix) >= reqRate(d.savings, d.target) - 1e-9;
+      return { mix, ok, why: ok ? null : 'pick', cap };
+    }
+    return advise(d.savings, d.target, d.risk || 'mid', d.over);
+  }
+
   /* ================= الحالة ================= */
   const KEY = 'sanad_proto_v1';
   const defaultState = () => ({ v: 1, user: null, passcode: null, plan: null, portfolios: [], history: [], sukuk: [], mixDraft: null, simOffset: 0, auto: null, events: {}, draft: null, reg: null, calc: { pf: 'div-safe', init: 20000, monthly: 1500, year: 15, saveYear: 1, period: 'all' } });
@@ -648,7 +695,7 @@
     { k: 'savings', type: 'amount', title: 'كم المبلغ اللي تبي تستثمره؟', sub: 'مكافأة نهاية الخدمة أو مدخراتك', min: 10000, max: 3000000, step: 10000, chips: [250000, 500000, 1000000] },
     { k: 'target', type: 'amount', title: 'كم تحتاج دخل إضافي كل شهر؟', sub: 'فوق معاشك التقاعدي', min: 500, max: 20000, step: 100, chips: [1500, 2500, 4000] },
     { k: 'auto', type: 'auto', title: 'تبي استقطاع شهري؟', sub: `اختياري: نودع مبلغ ثابت من حسابك يوم ${PAY_DAY} من كل شهر عشان تكبر خطتك`, amtKey: 'autoAmt', min: 100, max: 20000, step: 100, chips: [500, 1000, 2000] },
-    { k: 'risk', type: 'risk', title: 'كيف تصف تقبّلك للمخاطر؟', sub: `نختار لك من أنواع الاستثمار المناسبة لوصفك، بحد أقصى ${RISK_CAP}% مخاطر على رأس المال خلال 12 شهر` },
+    { k: 'risk', type: 'risk', title: 'كيف تصف تقبّلك للمخاطر؟', sub: `اختر «أعطني أفضل محفظة» ونبني لك أعلى دخل بخسارة أقل من ${RISK_CAP}% من رأس المال خلال 12 شهر، أو اختر وصفك وحدد نسبة المخاطر بنفسك` },
   ];
   const draft = () => {
     const d = S.draft || (S.draft = { age: 62, hasIncome: null, pension: 9000, savings: 500000, target: 2500, auto: null, autoAmt: 1000, risk: null, over: false });
@@ -698,12 +745,28 @@
           ${d.auto ? `<p class="h3 center mt24">المبلغ الشهري المستقطع</p>${slider(q.amtKey)}` : ''}
           <div class="cta-bottom"><button class="btn" data-action="ansAmt" data-i="${i}" ${d.auto == null ? 'disabled' : ''}>التالي</button></div>`;
       } else if (q.type === 'risk') {
-        body = Object.entries(RISK).map(([k, r]) => `<button class="opt ${d.risk === k ? 'selected' : ''}" data-action="ans" data-i="${i}" data-v="${k}">${ic(r.icon)}<span class="grow">${r.name}<div class="meta">${r.meta}</div><div class="opt-tags">${r.types.map((id) => `<span class="tag">${PORTS[id].name}</span>`).join('')}</div></span></button>`).join('');
+        const opt = (k, icon, name, meta, tags) => `<button class="opt ${d.risk === k ? 'selected' : ''}" data-action="ans" data-i="${i}" data-v="${k}">${ic(icon)}<span class="grow">${name}<div class="meta">${meta}</div><div class="opt-tags">${tags}</div></span></button>`;
+        body = opt('best', 'target', 'أعطني أفضل محفظة', `أعلى دخل من كل المحافظ بخسارة أقل من ${RISK_CAP}% من رأس المال خلال 12 شهر`, '<span class="tag">جميع المحافظ</span><span class="tag">بدون تجاوز حد المخاطر</span>')
+          + Object.entries(RISK).map(([k, r]) => opt(k, r.icon, r.name, PICK[k] ? `${r.meta} · تحدد نسبة المخاطر بنفسك` : r.meta, r.types.map((id) => `<span class="tag">${PORTS[id].name}</span>`).join(''))).join('');
+        const P = PICK[d.risk];
+        if (P) {
+          if (d.cap == null || d.cap < P.min || d.cap > P.max) d.cap = P.def;
+          body += `<div class="card mt16" id="cap-box"><p class="h3 center">اختر نسبة المخاطر</p>
+            <p class="small center mt8">أقصى انخفاض تتقبّله في رأس المال خلال 12 شهر، ونبني لك أعلى دخل بدرجة مخاطر أقل منها</p>
+            <div class="amount-big" id="amt">${capTxt(d.cap)}</div>
+            <input type="range" id="rng" min="${P.min}" max="${P.max}" step="${P.step}" value="${d.cap}" aria-label="نسبة المخاطر"/>
+            <div class="chips">${P.chips.map((c) => `<button class="chip ${c === d.cap ? 'on' : ''}" data-chip="${c}">${fmt(c)}%</button>`).join('')}</div>
+            <div class="row between mt12 small"><span>أفضل دخل شهري متوقع</span><b id="cap-inc"></b></div>
+            <div class="row between mt8 small"><span>درجة المخاطر</span><span id="cap-risk"></span></div>
+            <div class="warn mt8" id="cap-warn" hidden>${ic('alert')}<span>نسبة المخاطر فوق ${RISK_CAP}%: بنطلب منك موافقة صريحة بتوقيع إقرار المخاطر قبل اعتماد الخطة.</span></div></div>
+            <div class="cta-bottom"><button class="btn" data-action="ansAmt" data-i="${i}">التالي</button></div>`;
+        }
       }
       return `${top}${seg(i)}<h2 class="q-title">${q.title}</h2><p class="q-sub">${q.sub}</p>${body}`;
     },
     mount: (root, { n }) => {
       const i = parseInt(n, 10) - 1, q = QS[i], rng = root.querySelector('#rng'); if (!q || !rng) return;
+      if (q.type === 'risk') { mountCap(root, rng); return; }
       const d = draft(), key = q.amtKey || q.k, amt = root.querySelector('#amt'), hint = root.querySelector('#tg-hint');
       const upd = (v) => {
         d[key] = v; amt.innerHTML = q.unit ? numUnit(v, q.unit) : money(v, 0);
@@ -717,10 +780,31 @@
       upd(+rng.value);
     },
   });
+  // شريط اختيار نسبة المخاطر: يحدّث أفضل دخل ودرجة المخاطر مباشرة
+  function mountCap(root, rng) {
+    const d = draft(), amt = root.querySelector('#amt');
+    const upd = (v) => {
+      d.cap = v; amt.innerHTML = capTxt(v);
+      root.querySelectorAll('[data-chip]').forEach((c) => c.classList.toggle('on', +c.dataset.chip === v));
+      const p = { mode: 'custom', mix: cleanMix(bestMix(RISK[d.risk].types, v)), balance: d.savings };
+      root.querySelector('#cap-inc').innerHTML = money(income(p));
+      root.querySelector('#cap-risk').textContent = riskLabel(p);
+      root.querySelector('#cap-warn').hidden = v <= RISK_CAP;
+      save();
+    };
+    rng.addEventListener('input', () => upd(+rng.value));
+    root.querySelectorAll('[data-chip]').forEach((c) => c.addEventListener('click', () => { rng.value = c.dataset.chip; upd(+c.dataset.chip); }));
+    upd(+rng.value);
+  }
   ACTIONS.ans = (el) => {
     const i = +el.dataset.i, q = QS[i], d = draft();
     let v = el.dataset.v; if (q.type === 'yn') v = v === 'true';
     d[q.k] = v; if (q.k === 'hasIncome' && !v) d.pension = 0; if (q.k === 'hasIncome' && v && !d.pension) d.pension = 9000;
+    if (q.type === 'risk') {
+      d.over = false; d.closest = false;
+      // متوازن أو أعلى: نعرض اختيار نسبة المخاطر في نفس الشاشة بدل الانتقال مباشرة
+      if (PICK[v]) { save(); render(); later(() => { const b = document.getElementById('cap-box'); if (b) b.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 60); return; }
+    }
     el.parentElement.querySelectorAll('.opt').forEach((o) => o.classList.remove('selected')); el.classList.add('selected');
     later(() => nextQ(i), 220);
   };
@@ -731,7 +815,7 @@
     const i = +el.dataset.i, q = QS[i], d = draft();
     if (q.type === 'yn' && d.hasIncome == null) d.hasIncome = true;
     if (q.type === 'auto' && d.auto == null) d.auto = false;
-    if (q.type === 'risk' && !d.risk) d.risk = 'mid';
+    if (q.type === 'risk' && !d.risk) d.risk = 'best';
     track('step_skipped'); nextQ(i);
   };
   ACTIONS.typeAmount = (el) => {
@@ -747,8 +831,8 @@
     auth: true,
     view: () => {
       if (!S.draft) { go('/income', { replace: true }); return null; }
-      const d = draft(); if (!d.risk) d.risk = 'mid';
-      const A = advise(d.savings, d.target, d.risk, d.over), mix = A.mix;
+      const d = draft(); if (!d.risk) d.risk = 'best';
+      const A = adviseD(d), mix = A.mix, capShown = A.cap != null ? A.cap : RISK_CAP;
       d.advMix = mix; save();
       const p = { mode: 'auto', mix, balance: d.savings }, monthly = d.auto ? d.autoAmt : 0;
       const inc = income(p), cover = d.target ? inc / d.target * 100 : 100, full = inc >= d.target - 0.5, total = (d.pension || 0) + inc, L = mixLoss(mix);
@@ -758,6 +842,10 @@
         alert = `<div class="big-warn">${ic('alert')}<div><p>حتى مع تقبّل مخاطر أعلى، أقصى دخل نقدر نوصله ${money(inc, 0)} شهريًا.</p><p class="sm">لتحقيق هدفك (${money(d.target, 0)}) زِد مبلغ الاستثمار إلى ${money(need, 0)} تقريبًا.</p><div class="btns"><button class="btn soft" data-action="backToCap">ارجع لحد المخاطر ${RISK_CAP}%</button></div></div></div>`;
       } else if (!A.ok && d.closest) {
         alert = '';
+      } else if (!A.ok && A.why === 'pick') {
+        alert = `<div class="big-warn">${ic('alert')}<div><p>بدرجة مخاطر ${capTxt(A.cap)} أعلى دخل نقدر نوصله ${money(inc, 0)} شهريًا من هدف ${money(d.target, 0)}.</p><p class="sm">ارفع نسبة المخاطر، أو تقبّل أقرب دخل للمطلوب.</p><div class="btns"><button class="btn" data-action="changeCap">غيّر نسبة المخاطر</button><button class="btn soft" data-action="acceptClosest">تقبّل الدخل الأقرب</button></div></div></div>`;
+      } else if (A.cap != null && L > RISK_CAP) {
+        alert = `<div class="warn">${ic('alert')}<span>درجة مخاطر خطتك ${fmt(L, 1)}%، فوق حد ${RISK_CAP}%، وبنطلب منك موافقة صريحة بتوقيع إقرار المخاطر قبل الاعتماد.</span></div>`;
       } else if (!A.ok) {
         const why = A.why === 'profile' ? `أنواع الاستثمار المناسبة لوصفك (${RISK[d.risk].name}) ما توصل للدخل المستهدف ضمن حد المخاطر ${RISK_CAP}%.` : `بسبب حد المخاطر ${RISK_CAP}% لم نستطع الوصول للدخل المستهدف.`;
         alert = `<div class="big-warn">${ic('alert')}<div><p>${why} يجب تقبّل مخاطر أعلى، أو تقبّل أقرب دخل للمطلوب: ${money(inc, 0)} شهريًا.</p><div class="btns"><button class="btn" data-action="acceptOver">تقبّل مخاطر أعلى</button><button class="btn soft" data-action="acceptClosest">تقبّل الدخل الأقرب</button></div></div></div>`;
@@ -778,7 +866,7 @@
           <div class="row between mt8"><span class="small">المبلغ المستثمر</span><span class="small">${money(d.savings, 0)}</span></div>
           <div class="row between mt8"><span class="small">موعد الدفعة</span><span class="small">يوم ${PAY_DAY} من كل شهر</span></div>
           <div class="row between mt8"><span class="small">الاستقطاع الشهري</span><span class="small">${monthly ? money(monthly, 0) : 'بدون'}</span></div>
-          <div class="row between mt8"><span class="small">مخاطر رأس المال خلال 12 شهر</span><span class="small ${L > RISK_CAP ? 'neg' : ''}">${fmt(L, 1)}% (الحد ${RISK_CAP}%)</span></div></div>
+          <div class="row between mt8"><span class="small">مخاطر رأس المال خلال 12 شهر</span><span class="small ${L > RISK_CAP ? 'neg' : ''}">${fmt(L, 1)}% (${A.cap != null ? `اخترت ${capTxt(capShown)}` : `الحد ${RISK_CAP}%`})</span></div></div>
         <p class="small mt12">الأرقام تقديرية بعائد متوقع توضيحي ${fmt(mixRate(mix), 2)}% سنويًا (توزيعات + نمو) قبل رسوم الإدارة، وليست ضمانًا للعائد.</p>
         <div class="cta-bottom">
           <button class="btn" data-action="approvePlan">اعتماد الخطة</button>
@@ -796,20 +884,21 @@
   // قبول أقرب دخل: نشيل التنبيه ونبقى في نفس الشاشة
   ACTIONS.acceptClosest = () => { draft().closest = true; track('accept_closest'); save(); render(); toast('تم اعتماد أقرب دخل لهدفك'); };
   ACTIONS.backToCap = () => { const d = draft(); d.over = false; d.closest = false; save(); render(); };
+  ACTIONS.changeCap = () => { const d = draft(); d.closest = false; if (d.risk === 'best') d.risk = 'high'; save(); go(`/income/q/${QS.length}`); };
   function createPlan(extra, ack) {
     const d = draft();
-    S.plan = Object.assign({ age: d.age || 62, pension: d.pension || 0, savings: d.savings, target: d.target, risk: d.risk, payDay: PAY_DAY, dest: 'bank', paused: false, ack: !!ack, ackDate: ack ? new Date().toISOString() : null, balance: d.savings, funded: false, payLater: false, createdAt: new Date().toISOString() }, extra);
+    S.plan = Object.assign({ age: d.age || 62, pension: d.pension || 0, savings: d.savings, target: d.target, risk: d.risk, cap: capOf(d), payDay: PAY_DAY, dest: 'bank', paused: false, ack: !!ack, ackDate: ack ? new Date().toISOString() : null, balance: d.savings, funded: false, payLater: false, createdAt: new Date().toISOString() }, extra);
     S.auto = S.auto || {};
     if (d.auto) S.auto.sanad = { amount: d.autoAmt, day: PAY_DAY }; else delete S.auto.sanad;
     S.history = []; S.simOffset = 0; track('plan_approved'); save();
     closeSheet(true); go('/deposit/sanad?first=1');
   }
   ACTIONS.approvePlan = () => {
-    const d = draft(), mix = { ...(d.advMix || advise(d.savings, d.target, d.risk || 'mid', d.over).mix) }, L = mixLoss(mix);
+    const d = draft(), mix = { ...(d.advMix || adviseD(d).mix) }, L = mixLoss(mix);
     const done = () => createPlan({ mode: 'auto', mix }, needsAck(mix));
     if (needsAck(mix)) ackSheet(done, L > RISK_CAP ? 'over' : 'custom', L > RISK_CAP ? L : highShare({ mode: 'custom', mix })); else done();
   };
-  ACTIONS.designOwn = () => { const d = draft(); S.mixDraft = { ...(d.advMix || advise(d.savings, d.target, d.risk || 'mid', d.over).mix) }; save(); track('custom_start'); go('/income/custom'); };
+  ACTIONS.designOwn = () => { const d = draft(); S.mixDraft = { ...(d.advMix || adviseD(d).mix) }; save(); track('custom_start'); go('/income/custom'); };
 
   function ackSheet(onOk, kind = 'growth', share = 0) {
     const custom = kind !== 'growth';
@@ -838,7 +927,7 @@
       const fromEdit = q.get('from') === 'edit';
       if (fromEdit && !S.plan) { go('/income', { replace: true }); return null; }
       if (!fromEdit && (!S.draft || !S.draft.risk)) { go('/income/q/1', { replace: true }); return null; }
-      if (!S.mixDraft) S.mixDraft = { ...(fromEdit ? planMix(S.plan) : (S.draft.advMix || advise(S.draft.savings, S.draft.target, S.draft.risk, false).mix)) };
+      if (!S.mixDraft) S.mixDraft = { ...(fromEdit ? planMix(S.plan) : (S.draft.advMix || adviseD(S.draft).mix)) };
       return `${topbar('صمّم خطتك بنفسك', '', fromEdit ? '/plan/edit' : '/income/result')}
         <p class="sub">اختر أنواع المحافظ اللي تبيها في محفظة تقاعدك، وحدد وزن كل نوع. لازم يكون المجموع 100%.</p>
         <div class="card mt16"><div class="row between"><b>توزيع محفظتك</b><b id="mx-sum"></b></div><div id="mx-bar" class="mt12"></div>
