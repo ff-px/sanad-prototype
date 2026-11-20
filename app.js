@@ -892,7 +892,7 @@
       return `${topbar('خطتك جاهزة', '', '/income')}
         <div class="res-head"><small>دخلك الشهري المتوقع</small><b>${money(inc)}</b><small>${A.ok ? (inc > d.target + 0.5 ? `أعلى من هدفك (${money(d.target, 0)})` : 'يغطي هدفك بالكامل') : d.closest ? `أقرب دخل لهدفك (${money(d.target, 0)})` : `من هدف ${money(d.target, 0)}`}</small></div>
         ${alert}
-        <div class="card mt16"><div class="chart-head"><b>قيمة استثمارك خلال 15 سنة</b></div><div id="proj" class="mt12">${projHTML(d.savings, mix, monthly)}</div></div>
+        <div class="card mt16"><div class="chart-head"><b>قيمة استثمارك خلال 15 سنة</b>${reinvToggle('reinv')}</div><div id="proj" class="mt12">${projHTML(d.savings, mix, monthly)}</div></div>
         <div class="card">
           <div class="row between"><b>تغطية هدفك (${money(d.target, 0)})</b><b class="${full ? 'pos' : ''}">${full ? fmt(Math.min(cover, 999)) : fmt(Math.min(cover, 99.9), 1)}%</b></div>
           <div class="bar mt12 ${full ? 'green' : ''}"><i style="width:${Math.min(cover, 100)}%"></i></div>
@@ -969,7 +969,7 @@
         <p class="sub">اختر أنواع المحافظ اللي تبيها في محفظة تقاعدك، وحدد وزن كل نوع. لازم يكون المجموع 100%.</p>
         <div class="card mt16"><div class="row between"><b>توزيع محفظتك</b><b id="mx-sum"></b></div><div id="mx-bar" class="mt12"></div>
           <div class="chips" style="justify-content:flex-start;margin-top:14px"><button class="chip" data-mx="equal">وزّع بالتساوي</button><button class="chip" data-mx="reset">ارجع للخطة المقترحة</button><button class="chip" data-mx="clear">ابدأ من الصفر</button></div></div>
-        <div class="card mt16"><div class="chart-head"><b>قيمة استثمارك خلال 15 سنة</b></div><div id="mx-proj" class="mt12"></div></div>
+        <div class="card mt16"><div class="chart-head"><b>قيمة استثمارك خلال 15 سنة</b>${reinvToggle('mx-reinv')}</div><div id="mx-proj" class="mt12"></div></div>
         <div class="mix-list mt16">${MIX_ORDER.map((id) => { const p = PORTS[id]; return `<div class="mix-row" data-id="${id}">${iconCircle(p)}<div class="grow"><b>${p.name}${HIGH_RISK.includes(id) ? ' <span class="badge-warn">مخاطر أعلى</span>' : ''}</b><small>عائد متوقع ${fmt(p.rate, 1)}% · انخفاض محتمل ${fmt(ADV[id].loss, 1)}%</small></div><div class="stepper"><button data-step="5" aria-label="زيادة">${ic('plus')}</button><span class="w"></span><button data-step="-5" aria-label="تقليل"><svg class="ic" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button></div></div>`; }).join('')}</div>
         <div class="preview">
           <div class="row between"><span>دخلك الشهري المتوقع</span><b id="mx-inc"></b></div>
@@ -1075,8 +1075,8 @@
     }
     if ((mix.saving || 0) < 10) out.push({ ic: 'wallet', t: 'ارفع السيولة للطوارئ', d: 'نوصي إن 10% على الأقل من خطتك تكون في الادخار عشان تغطي أي مصروف مفاجئ بدون ما تبيع وقت النزول.', l: 'تعديل الأوزان', a: 'data-action="editMix"' });
     if (!auto) {
-      const v1 = yearPath(bal, mix, inc, 1000), v0 = yearPath(bal, mix, inc, 0);
-      out.push({ ic: 'repeat', t: 'فعّل الاستقطاع الشهري', d: `استقطاع ${money(1000, 0)} شهريًا يرفع رصيد خطتك بعد 15 سنة إلى ${money(v1[15], 0)} تقريبًا بدل ${money(v0[15], 0)}، مع نفس دفعتك الشهرية.`, l: 'تفعيل الاستقطاع', a: 'data-action="autoDep" data-id="sanad"' });
+      const pr = project(bal, Y, 1000);
+      out.push({ ic: 'repeat', t: 'فعّل الاستقطاع الشهري', d: `استقطاع ${money(1000, 0)} شهريًا يرفع قيمة محفظتك بعد 15 سنة إلى ${money(pr.val[15], 0)} تقريبًا، ويكبر دخلك مع الوقت.`, l: 'تفعيل الاستقطاع', a: 'data-action="autoDep" data-id="sanad"' });
     }
     if (p.funded && p.dest === 'bank' && p.target && inc > p.target * 1.05) out.push({ ic: 'refresh', t: 'دخلك أعلى من هدفك', d: `عندك فائض ${money(inc - p.target, 0)} شهريًا. تقدر تعيد استثماره عشان تكبر خطتك.`, l: 'تعديل الخطة', a: 'data-go="/plan/edit"' });
     out.push({ ic: 'landmark', t: 'فرصة صكوك شركات', d: `صكوك بعائد ثابت يصل إلى ${fmt(Math.max(...SUKUK.map((o) => o.rate)), 1)}% وتوزيعات دورية، مخاطرها منخفضة وتناسب دخل التقاعد.`, l: 'استعرض الفرص', a: 'data-go="/portfolio/corp-sukuk"' });
