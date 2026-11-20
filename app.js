@@ -406,13 +406,21 @@
     const g = netRate(mix), re = [P]; for (let y = 1; y <= e; y++) re.push(re[y - 1] * (1 + g) + monthly * 12);
     const pr = { val: path, inc: path.map((_, y) => pay * 12 * y), tot: path.map((v, y) => v + pay * 12 * y), re };
     const xt = [[0, 'الآن'], [5, '5 سنوات'], [10, '10 سنوات'], [15, '15 سنة']];
+    const tbl = planTable(P, mix, pay, monthly);
     const chart = REINV
       ? lineChart([{ pts: pr.tot, color: '#8A93A6', dash: true, label: 'بدون إعادة استثمار (القيمة + الدخل المستلم)', short: 'بدون إعادة استثمار' }, { pts: pr.re, color: '#3A47E6', label: 'مع إعادة استثمار التوزيعات', short: 'مع إعادة الاستثمار' }], xt, { min: 0, label: 'أثر إعادة استثمار التوزيعات خلال 15 سنة' })
       : lineChart([{ pts: pr.inc, color: '#13A57A', label: 'الدخل المستلم التراكمي', short: 'الدخل المستلم', fill: false }, { pts: pr.val, color: '#3A47E6', label: 'قيمة محفظتك', short: 'قيمة محفظتك' }], xt, { min: 0, label: 'قيمة الاستثمار خلال 15 سنة' });
     const note = REINV
       ? `بعد 15 سنة: ${money(pr.re[e], 0)} مع إعادة الاستثمار، مقابل ${money(pr.tot[e], 0)} بدونها (فرق ${money(pr.re[e] - pr.tot[e], 0)}). مع إعادة الاستثمار ما تستلم دخل شهري خلال الفترة.`
       : `خلال 15 سنة تستلم ${money(pay, 0)} شهريًا (إجمالي ${money(pr.inc[e], 0)})، وتبقى قيمة محفظتك ${money(pr.val[e], 0)} بعد رسوم الإدارة ${FEE_PCT}% والزكاة ${ZAKAT_PCT}%${monthly ? ' مع الاستقطاع الشهري' : ''}.`;
-    return `${chart}<div class="lc-axes"><span>المحور الأفقي: السنوات</span><span>المحور الرأسي: القيمة بالريال</span></div>${weightsHTML(mix)}<p class="small mt8" style="line-height:1.8">${note}</p>`;
+    return `${chart}<div class="lc-axes"><span>المحور الأفقي: السنوات</span><span>المحور الرأسي: القيمة بالريال</span></div>${weightsHTML(mix)}<p class="small mt8" style="line-height:1.8">${note}</p>${tbl}`;
+  }
+  // جدول الخطة سنة بسنة — نفس أعمدة ورقة أبو فيصل في النموذج المالي
+  function planTable(P, mix, pay, monthly = 0) {
+    const R = mixRate(mix) / 100, F = FEE_PCT / 100, Z = ZAKAT_PCT / 100; let b = P, rows = '';
+    for (let y = 1; y <= YEARS; y++) { const r = b * R, f = b * F, z = b * Z, e = b + r - f - z - pay * 12 + monthly * 12;
+      rows += `<tr><td>${y}</td><td>${fmt(b, 0)}</td><td>${fmt(r, 0)}</td><td>${fmt(f, 0)}</td><td>${fmt(z, 0)}</td><td>${fmt(pay * 12, 0)}</td><td>${fmt(pay, 0)}</td><td><b>${fmt(e, 0)}</b></td></tr>`; b = e; }
+    return `<details class="ptbl mt12"><summary>جدول الخطة سنة بسنة</summary><div class="ptbl-wrap"><table><thead><tr><th>السنة</th><th>رأس المال بداية السنة</th><th>العائد ${fmt(R * 100, 2)}%</th><th>الرسوم ${FEE_PCT}%</th><th>الزكاة ${ZAKAT_PCT}%</th><th>الدفعة السنوية</th><th>الدفعة الشهرية</th><th>رأس المال نهاية السنة</th></tr></thead><tbody>${rows}</tbody></table></div><p class="small mt8">الرسوم ${FEE_PCT}% شاملة ضريبة القيمة المضافة. العائد والرسوم والزكاة من رأس مال بداية السنة${monthly ? '، والاستقطاع الشهري يُضاف لرأس المال' : ''}.</p></details>`;
   }
   const portBalance = (id) => (S.portfolios.find((x) => x.id === id) || {}).balance || 0;
   const totalBalance = () => (S.plan && S.plan.funded ? S.plan.balance : 0) + S.portfolios.reduce((s, x) => s + x.balance, 0);
@@ -884,7 +892,7 @@
       return `${topbar('خطتك جاهزة', '', '/income')}
         <div class="res-head"><small>دخلك الشهري المتوقع</small><b>${money(inc)}</b><small>${A.ok ? (inc > d.target + 0.5 ? `أعلى من هدفك (${money(d.target, 0)})` : 'يغطي هدفك بالكامل') : d.closest ? `أقرب دخل لهدفك (${money(d.target, 0)})` : `من هدف ${money(d.target, 0)}`}</small></div>
         ${alert}
-        <div class="card mt16"><div class="chart-head"><b>قيمة استثمارك خلال 15 سنة</b>${reinvToggle('reinv')}</div><div id="proj" class="mt12">${projHTML(d.savings, mix, monthly)}</div></div>
+        <div class="card mt16"><div class="chart-head"><b>قيمة استثمارك خلال 15 سنة</b></div><div id="proj" class="mt12">${projHTML(d.savings, mix, monthly)}</div></div>
         <div class="card">
           <div class="row between"><b>تغطية هدفك (${money(d.target, 0)})</b><b class="${full ? 'pos' : ''}">${full ? fmt(Math.min(cover, 999)) : fmt(Math.min(cover, 99.9), 1)}%</b></div>
           <div class="bar mt12 ${full ? 'green' : ''}"><i style="width:${Math.min(cover, 100)}%"></i></div>
@@ -961,7 +969,7 @@
         <p class="sub">اختر أنواع المحافظ اللي تبيها في محفظة تقاعدك، وحدد وزن كل نوع. لازم يكون المجموع 100%.</p>
         <div class="card mt16"><div class="row between"><b>توزيع محفظتك</b><b id="mx-sum"></b></div><div id="mx-bar" class="mt12"></div>
           <div class="chips" style="justify-content:flex-start;margin-top:14px"><button class="chip" data-mx="equal">وزّع بالتساوي</button><button class="chip" data-mx="reset">ارجع للخطة المقترحة</button><button class="chip" data-mx="clear">ابدأ من الصفر</button></div></div>
-        <div class="card mt16"><div class="chart-head"><b>قيمة استثمارك خلال 15 سنة</b>${reinvToggle('mx-reinv')}</div><div id="mx-proj" class="mt12"></div></div>
+        <div class="card mt16"><div class="chart-head"><b>قيمة استثمارك خلال 15 سنة</b></div><div id="mx-proj" class="mt12"></div></div>
         <div class="mix-list mt16">${MIX_ORDER.map((id) => { const p = PORTS[id]; return `<div class="mix-row" data-id="${id}">${iconCircle(p)}<div class="grow"><b>${p.name}${HIGH_RISK.includes(id) ? ' <span class="badge-warn">مخاطر أعلى</span>' : ''}</b><small>عائد متوقع ${fmt(p.rate, 1)}% · انخفاض محتمل ${fmt(ADV[id].loss, 1)}%</small></div><div class="stepper"><button data-step="5" aria-label="زيادة">${ic('plus')}</button><span class="w"></span><button data-step="-5" aria-label="تقليل"><svg class="ic" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button></div></div>`; }).join('')}</div>
         <div class="preview">
           <div class="row between"><span>دخلك الشهري المتوقع</span><b id="mx-inc"></b></div>
@@ -1026,7 +1034,7 @@
 
   /* ================= 4) الرئيسية ================= */
   const SANAD_FAQ = [
-    ['كيف تُحسب دفعتي الشهرية؟', 'نجمع العوائد المتوقعة من السلال الثلاث: أرباح المرابحة، وعوائد الصكوك، وتوزيعات الأسهم والريت، ثم نقسمها على 12 شهرًا.'],
+    ['كيف تُحسب دفعتي الشهرية؟', 'دفعتك الشهرية ثابتة وتساوي هدفك، وتُصرف 15 سنة من عائد محفظتك ورأس المال بعد رسوم الإدارة 1% (شاملة ضريبة القيمة المضافة) والزكاة 2.5%. إذا ما يكفي المبلغ نعرض لك أعلى دفعة ممكنة.'],
     ['وش يصير لو انخفض السوق؟', 'سلة السيولة تغطي احتياجك القريب، والصكوك نحتفظ فيها حتى الاستحقاق، ونعيد التوازن دوريًا. الدفعة قد تتغير لكن رأس مالك موزع لتقليل الأثر.'],
     ['أقدر أوقف الدفعات أو أغيّر يومها؟', 'نعم، من تعديل الخطة تقدر توقف الدفعات مؤقتًا، أو تغيّر يومها، أو تخليها يُعاد استثمارها.'],
     ['ليش أوقع إقرار لسلة النمو؟', 'لأن سلة النمو فيها أسهم وصناديق ريت قيمتها تتذبذب، فنتأكد إنك مطّلع على المخاطر قبل رفعها فوق 25%.'],
@@ -1056,19 +1064,19 @@
     const out = [], mix = planMix(p), bal = p.funded ? p.balance : p.savings, pp = { ...p, balance: bal };
     const inc = income(pp), L = mixLoss(mix), Y = mixRate(mix) / 100, auto = S.auto && S.auto.sanad;
     if (p.target && inc < p.target - 0.5) {
-      const need = Math.max(0, p.target * 12 / Math.max(Y, 1e-6) - bal);
+      const need = Math.max(0, p.target * 12 / Math.max(annuityF(netRate(mix)), 1e-6) - bal);
       out.push({ ic: 'target', t: 'دخلك المتوقع أقل من هدفك', d: `ينقصك ${money(p.target - inc, 0)} شهريًا. أضف ${money(need, 0)} تقريبًا لخطتك، أو تقبّل مخاطر أعلى.`, l: 'إضافة مبلغ', a: 'data-go="/deposit/sanad"' });
     }
     if (L > RISK_CAP) out.push({ ic: 'alert', t: 'مخاطر محفظتك أعلى من الحد', d: `أقصى انخفاض متوقع ${fmt(L, 1)}% خلال 12 شهر، والحد الموصى ${RISK_CAP}%. خفّف أوزان المحافظ عالية المخاطر.`, l: 'تعديل الأوزان', a: 'data-action="editMix"' });
     // خطة المستشار الآلي هي أصلًا أعلى دخل لمستوى مخاطرها، فالاقتراح هذا فقط للخطط اللي صممها العميل بنفسه
     BEST_MIX = (p.mode || 'preset') !== 'auto' ? edge(ADV_ALL, (m) => mixLoss(m) <= Math.max(L, 0.5) + 1e-9, 0) : null;
     if (BEST_MIX && mixRate(BEST_MIX) - mixRate(mix) > 0.25) {
-      out.push({ ic: 'trend', t: 'المستشار الآلي يقدر يرفع دخلك', d: `توزيعك الحالي ما يستغل مستوى مخاطرك (${fmt(L, 1)}%). المستشار الآلي يوصلك إلى ${money(bal * mixRate(BEST_MIX) / 100 / 12, 0)} شهريًا بنفس المخاطر.`, l: 'شوف خطة المستشار', a: 'data-action="tryBest"' });
+      out.push({ ic: 'trend', t: 'المستشار الآلي يقدر يرفع دخلك', d: `توزيعك الحالي ما يستغل مستوى مخاطرك (${fmt(L, 1)}%). المستشار الآلي يوصلك إلى ${money(maxPay(bal, BEST_MIX), 0)} شهريًا بنفس المخاطر.`, l: 'شوف خطة المستشار', a: 'data-action="tryBest"' });
     }
     if ((mix.saving || 0) < 10) out.push({ ic: 'wallet', t: 'ارفع السيولة للطوارئ', d: 'نوصي إن 10% على الأقل من خطتك تكون في الادخار عشان تغطي أي مصروف مفاجئ بدون ما تبيع وقت النزول.', l: 'تعديل الأوزان', a: 'data-action="editMix"' });
     if (!auto) {
-      const pr = project(bal, Y, 1000);
-      out.push({ ic: 'repeat', t: 'فعّل الاستقطاع الشهري', d: `استقطاع ${money(1000, 0)} شهريًا يرفع قيمة محفظتك بعد 15 سنة إلى ${money(pr.val[15], 0)} تقريبًا، ويكبر دخلك مع الوقت.`, l: 'تفعيل الاستقطاع', a: 'data-action="autoDep" data-id="sanad"' });
+      const v1 = yearPath(bal, mix, inc, 1000), v0 = yearPath(bal, mix, inc, 0);
+      out.push({ ic: 'repeat', t: 'فعّل الاستقطاع الشهري', d: `استقطاع ${money(1000, 0)} شهريًا يرفع رصيد خطتك بعد 15 سنة إلى ${money(v1[15], 0)} تقريبًا بدل ${money(v0[15], 0)}، مع نفس دفعتك الشهرية.`, l: 'تفعيل الاستقطاع', a: 'data-action="autoDep" data-id="sanad"' });
     }
     if (p.funded && p.dest === 'bank' && p.target && inc > p.target * 1.05) out.push({ ic: 'refresh', t: 'دخلك أعلى من هدفك', d: `عندك فائض ${money(inc - p.target, 0)} شهريًا. تقدر تعيد استثماره عشان تكبر خطتك.`, l: 'تعديل الخطة', a: 'data-go="/plan/edit"' });
     out.push({ ic: 'landmark', t: 'فرصة صكوك شركات', d: `صكوك بعائد ثابت يصل إلى ${fmt(Math.max(...SUKUK.map((o) => o.rate)), 1)}% وتوزيعات دورية، مخاطرها منخفضة وتناسب دخل التقاعد.`, l: 'استعرض الفرص', a: 'data-go="/portfolio/corp-sukuk"' });
@@ -1378,7 +1386,7 @@
         const p = S.plan; if (!p || !p.funded) { go('/home', { replace: true }); return null; }
         const received = S.history.reduce((s, h) => s + h.amount, 0);
         return `${topbar('احصائيات الخطة')}
-          <div class="card"><div class="row between"><span>رصيد الخطة</span><b>${money(p.balance)}</b></div><div class="row between mt8"><span class="small">إجمالي الدفعات المستلمة</span><span class="small">${money(received)}</span></div><div class="row between mt8"><span class="small">العائد التوزيعي السنوي</span><span class="small pos">${fmt(planY(p) * 100, 2)}%</span></div><div class="row between mt8"><span class="small">بداية الخطة</span><span class="small">${fmtDate(new Date(p.createdAt))}</span></div></div>
+          <div class="card"><div class="row between"><span>رصيد الخطة</span><b>${money(p.balance)}</b></div><div class="row between mt8"><span class="small">إجمالي الدفعات المستلمة</span><span class="small">${money(received)}</span></div><div class="row between mt8"><span class="small">العائد السنوي المتوقع (قبل الرسوم والزكاة)</span><span class="small pos">${fmt(planY(p) * 100, 2)}%</span></div><div class="row between mt8"><span class="small">بداية الخطة</span><span class="small">${fmtDate(new Date(p.createdAt))}</span></div></div>
           <div class="card"><h3 class="h3">قيمة كل ${(p.mode || 'preset') !== 'preset' ? 'محفظة' : 'سلة'}</h3>${comps(p).map((c) => `<div class="mt12"><div class="row between"><span>${c.name}</span><b>${money(p.balance * c.w / 100, 0)}</b></div><div class="bar mt8"><i style="width:${c.w}%;background:${c.hex}"></i></div></div>`).join('')}</div>
           <div id="hist-wrap">${histCard('sanad-' + comps(p).map((c) => c.k + c.w).join(''), 'محفظة التقاعد', planTR(p) * 100, 0.002 + highShare(p) / 100 * 0.02)}</div>`;
       }
