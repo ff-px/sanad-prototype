@@ -122,7 +122,7 @@
     dividends: { name: 'التوزيعات', short: 'أسهم وريت وصكوك موزّعة', dy: 9.0, hex: '#13A57A', tk: 'DIV', icon: 'coins', isNew: true, desc: 'لزيادة دخلك بتوزيعات شهرية', tags: ['أسهم', 'عقارات', 'صناديق أسواق النقد', 'صكوك'], rate: 9.0, risk: 'متوسطة', vol: 0.005,
       hero: 'دخل شهري من توزيعات أرباح مختارة', holdings: [['أسهم توزيعات', 'DIV', 40], ['صناديق الريت', 'REIT', 25], ['صكوك', 'SUKUK', 20], ['صناديق أسواق النقد', 'MMF', 15]] },
     'corp-sukuk': { name: 'صكوك الشركات', short: 'صكوك شركات شرعية', dy: 11.28, hex: '#2F7BDB', tk: 'SUKUK', icon: 'landmark', isNew: true, desc: 'استثمر فقط في صكوك الشركات المتوافقة مع الشريعة', tags: ['صكوك شركات شرعية', 'عوائد ثابتة', 'توزيعات دورية'], rate: 11.28, risk: 'منخفضة', vol: 0.0015,
-      hero: 'صكوك شركات شرعية بعوائد ثابتة', text: 'فرص استثمارية محدودة المدة في صكوك شركات سعودية معتمدة من اللجنة الشرعية، بعوائد ثابتة وتوزيعات دورية (شهرية، ربعية، نصف سنوية)', holdings: [] },
+      hero: 'صكوك شركات شرعية بعوائد ثابتة', text: 'محفظة تديرها أبيان تستثمر في صكوك شركات سعودية معتمدة من اللجنة الشرعية، بعوائد ثابتة وتوزيعات دورية', holdings: [] },
     reit: { name: 'صناديق الدخل العقاري', short: 'ملكية جزئية في عقارات مدرّة للدخل', dy: 6.5, hex: '#F29E4C', tk: 'RE-INC', icon: 'building', isNew: true, desc: 'ملكية جزئية في عقارات مدرّة للدخل عبر صناديق الدخل العقاري', tags: ['صناديق دخل عقاري', 'ملكية جزئية', 'توزيعات نقدية'], rate: 7.5, risk: 'متوسطة', vol: 0.008,
       hero: 'استثمر في العقار بدون ما تشتري عقار', text: 'ملكية جزئية في عقارات مدرّة للدخل عبر صناديق الدخل العقاري، بتوزيعات نقدية دورية', holdings: [['صناديق الدخل العقاري (ملكية جزئية)', 'RE-INC', 100]] },
     saudi: { name: 'السوق السعودي', short: 'أسهم سعودية بإدارة نشطة', dy: 2.5, hex: '#E86A5E', tk: 'TASI', icon: 'palm', desc: 'لعوائد عالية في أسهم مختارة بإدارة نشطة', tags: ['أسهم سعودية (نشطة)'], rate: 20.83, risk: 'مرتفعة', vol: 0.011,
@@ -151,14 +151,14 @@
   const ADV = {
     saving: { loss: 0.5, min: 10, max: 40 },
     'corp-sukuk': { loss: 6, min: 0, max: 40 },
-    'div-safe': { loss: 6.99, min: 0, max: 40 },
-    dividends: { loss: 14.37, min: 0, max: 30 },
+    'div-safe': { loss: 6.62, min: 0, max: 40 },
+    dividends: { loss: 14.33, min: 0, max: 30 },
     reit: { loss: 10.66, min: 0, max: 25 },
-    'div-bal': { loss: 12.04, min: 0, max: 30 },
-    'div-growth': { loss: 15.85, min: 0, max: 20 },
-    'div-high': { loss: 26, min: 0, max: 15 },
-    saudi: { loss: 28, min: 0, max: 15 },
-    future: { loss: 48.09, min: 0, max: 5 },
+    'div-bal': { loss: 11.44, min: 0, max: 30 },
+    'div-growth': { loss: 14.74, min: 0, max: 20 },
+    'div-high': { loss: 25.06, min: 0, max: 15 },
+    saudi: { loss: 29, min: 0, max: 15 },
+    future: { loss: 47.91, min: 0, max: 5 },
   };
   const ADV_ALL = ['saving', 'corp-sukuk', 'div-safe', 'dividends', 'reit', 'div-bal', 'div-growth', 'div-high', 'saudi'];
   const mixRate = (w) => Object.keys(w).reduce((s, id) => s + (w[id] || 0) * (PORTS[id] ? PORTS[id].rate : 0) / 100, 0); // %
@@ -166,7 +166,7 @@
      المكونات: نقد، صكوك، أسهم عالمية، أسهم تقنية، أسهم سعودية، أسهم توزيعات، عقار (ريت)، ذهب، فضة، بيتكوين، صكوك الشركات، صناديق الدخل العقاري.
      تركيبة محافظ أبيان من موقع أبيان المالية؛ صكوك الشركات وصناديق الدخل العقاري أرقام الفريق. */
   const NC = 12;
-  const AC_LOSS = [0.5, 6, 20, 33, 28, 25, 22, 15, 30, 65, 6, 10.66];
+  const AC_LOSS = [0.5, 5.49, 18.36, 32.4, 29, 25, 22, 15, 30, 65, 6, 10.66];
   const AC_CORR = (() => { const R = AC_LOSS.map((_, i) => AC_LOSS.map((__, j) => (i === j ? 1 : 0)));
     [[1, 2, 0.3], [1, 3, 0.25], [1, 4, 0.2], [1, 5, 0.2], [1, 6, 0.3], [1, 7, 0.3], [1, 8, 0.2], [1, 9, 0.1], [1, 10, 0.9], [1, 11, 0.2], [2, 3, 0.9], [2, 4, 0.5], [2, 5, 0.45], [2, 6, 0.4], [2, 7, 0.1], [2, 8, 0.3], [2, 9, 0.5], [2, 10, 0.3], [2, 11, 0.45], [3, 4, 0.45], [3, 5, 0.4], [3, 6, 0.35], [3, 7, 0.05], [3, 8, 0.25], [3, 9, 0.6], [3, 10, 0.25], [3, 11, 0.4], [4, 5, 0.9], [4, 6, 0.6], [4, 7, 0.1], [4, 8, 0.2], [4, 9, 0.3], [4, 10, 0.2], [4, 11, 0.8], [5, 6, 0.6], [5, 7, 0.1], [5, 8, 0.2], [5, 9, 0.25], [5, 10, 0.2], [5, 11, 0.7], [6, 7, 0.15], [6, 8, 0.2], [6, 9, 0.3], [6, 10, 0.3], [6, 11, 0.7], [7, 8, 0.8], [7, 9, 0.2], [7, 10, 0.3], [7, 11, 0.1], [8, 9, 0.3], [8, 10, 0.2], [8, 11, 0.2], [9, 10, 0.1], [9, 11, 0.25], [10, 11, 0.2]]
       .forEach(([i, j, v]) => { R[i][j] = v; R[j][i] = v; }); return R; })();
@@ -235,7 +235,7 @@
      أعلى عائد متوقع بشرط أن درجة المخاطر المعروضة (لأقرب خانة عشرية) أقل من النسبة المختارة */
   // محافظ: يختار نسبة أقل من 10% · متوازن: أقرب ما يكون لـ10% بدون ما يوصلها (ثابت) · نمو أعلى: يختار نسبة فوق 10% بإقرار
   const PICK = {
-    // أقل درجة مخاطر ممكنة 4.44% (40% ادخار + 40% صكوك شركات + 10% آمنة + 10% دخل عقاري) وأعلاها 11.91% ضمن حدود الأوزان
+    // أقل درجة مخاطر ممكنة 4.41% وأعلى عائد ممكن عند 11.70% ضمن حدود الأوزان (نفس ورقة Frontier)
     low: { min: 4.5, max: 9.5, step: 0.5, def: 6, chips: [5, 6, 8] },
     high: { min: 10.5, max: 12, step: 0.5, def: 12, chips: [11, 12] },
   };
@@ -897,6 +897,7 @@
       const p = { mode: 'auto', mix, balance: d.savings, target: d.target }, monthly = d.auto ? d.autoAmt : 0;
       const inc = income(p), cover = d.target ? inc / d.target * 100 : 100, full = inc >= d.target - 0.5, total = (d.pension || 0) + inc, L = mixLoss(mix);
       const need = d.target * 12 / Math.max(annuityF(netRate(mix)), 1e-6);
+      const mp = maxPay(d.savings, mix), mpPct = d.target ? mp / d.target * 100 : 100;
       let alert = '';
       if (!A.ok && A.why === 'max') {
         alert = `<div class="big-warn">${ic('alert')}<div><p>حتى مع تقبّل مخاطر أعلى، أقصى دخل نقدر نوصله ${money(inc, 0)} شهريًا.</p><p class="sm">لتحقيق هدفك (${money(d.target, 0)}) زِد مبلغ الاستثمار إلى ${money(need, 0)} تقريبًا.</p><div class="btns"><button class="btn soft" data-action="backToCap">ارجع لحد المخاطر ${RISK_CAP}%</button></div></div></div>`;
@@ -918,9 +919,10 @@
         ${alert}
         <div class="card mt16"><div class="chart-head"><b>قيمة استثمارك خلال 15 سنة</b>${reinvToggle('reinv')}</div><div id="proj" class="mt12">${projHTML(d.savings, mix, monthly)}</div></div>
         <div class="card">
-          <div class="row between"><b>تغطية هدفك (${money(d.target, 0)})</b><b class="${full ? 'pos' : ''}">${full ? fmt(Math.min(cover, 999)) : fmt(Math.min(cover, 99.9), 1)}%</b></div>
-          <div class="bar mt12 ${full ? 'green' : ''}"><i style="width:${Math.min(cover, 100)}%"></i></div>
-          <p class="small mt12">${full ? 'خطتك تغطي هدفك الشهري بالكامل.' : `لتغطية هدفك بالكامل بنفس التوزيع تحتاج تستثمر تقريبًا ${money(need, 0)}.`}</p>
+          <div class="row between"><b>أعلى دخل صافي ممكن شهريًا</b><b class="${mp >= d.target - 0.5 ? 'pos' : ''}">${money(mp, 0)}</b></div>
+          <div class="row between mt8"><span class="small">نسبته من هدفك (${money(d.target, 0)})</span><b class="${mpPct >= 100 ? 'pos' : ''}">${fmt(mpPct, mpPct >= 100 ? 0 : 1)}%</b></div>
+          <div class="bar mt12 ${mpPct >= 100 ? 'green' : ''}"><i style="width:${Math.min(mpPct, 100)}%"></i></div>
+          <p class="small mt12">${mpPct >= 100 ? `بهذا التوزيع تقدر تستلم حتى ${money(mp, 0)} صافية كل شهر لمدة 15 سنة بعد رسوم ${FEE_PCT}% والزكاة ${ZAKAT_PCT}%، وخطتك تصرف لك هدفك ${money(d.target, 0)}.` : `أعلى دخل صافي ممكن أقل من هدفك. لتغطية هدفك بالكامل بنفس التوزيع تحتاج تستثمر تقريبًا ${money(need, 0)}.`}</p>
         </div>
         <div class="card"><div class="row between"><span>دخلك الكلي مع المعاش</span><b>${money(total, 0)}</b></div>
           <div class="row between mt8"><span class="small">العمر</span><span class="small">${d.age} سنة</span></div>
@@ -1104,7 +1106,7 @@
       out.push({ ic: 'repeat', t: 'فعّل الاستقطاع الشهري', d: `استقطاع ${money(1000, 0)} شهريًا يرفع قيمة محفظتك بعد 15 سنة إلى ${money(pr.val[15], 0)} تقريبًا، ويكبر دخلك مع الوقت.`, l: 'تفعيل الاستقطاع', a: 'data-action="autoDep" data-id="sanad"' });
     }
     if (p.funded && p.dest === 'bank' && p.target && inc > p.target * 1.05) out.push({ ic: 'refresh', t: 'دخلك أعلى من هدفك', d: `عندك فائض ${money(inc - p.target, 0)} شهريًا. تقدر تعيد استثماره عشان تكبر خطتك.`, l: 'تعديل الخطة', a: 'data-go="/plan/edit"' });
-    out.push({ ic: 'landmark', t: 'فرصة صكوك شركات', d: `صكوك بعائد ثابت يصل إلى ${fmt(Math.max(...SUKUK.map((o) => o.rate)), 1)}% وتوزيعات دورية، مخاطرها منخفضة وتناسب دخل التقاعد.`, l: 'استعرض الفرص', a: 'data-go="/portfolio/corp-sukuk"' });
+    out.push({ ic: 'landmark', t: 'محفظة صكوك الشركات', d: `عائد متوقع ${fmt(PORTS['corp-sukuk'].rate, 2)}% بتوزيعات دورية، تديرها أبيان ومخاطرها منخفضة وتناسب دخل التقاعد.`, l: 'استعرض المحفظة', a: 'data-go="/portfolio/corp-sukuk"' });
     return out.slice(0, 3);
   }
   ACTIONS.tryBest = () => { if (!BEST_MIX || !S.plan) return; S.mixDraft = cleanMix(BEST_MIX); save(); track('suggestion_best'); go('/income/custom?from=edit'); };
@@ -1329,12 +1331,13 @@
         ${bal ? `<div class="kv" style="margin:0 0 16px"><span>رصيدك</span><b>${money(bal)}</b></div>` : ''}
         <div class="pf-hero">${hero}</div>
         <p class="pf-text">${text}${id === 'saving' ? `، بمتوسط <span class="pos">+${fmt(p.rate, 2)}%</span> سنويًا` : id === 'corp-sukuk' ? `، بمتوسط عائد سنوي <span class="pos">▲${fmt(p.rate, 2)}%</span>` : ` حققت متوسط سنوي <span class="pos">▲${fmt(p.rate, 2)}%</span>`}</p>
-        ${id === 'corp-sukuk' ? sukukSection() : `<button class="btn" data-go="/deposit/${id}">${ic('plus')}إيداع</button>
+        ${id === 'corp-sukuk' ? `<button class="btn" data-go="/deposit/${id}">${ic('plus')}إيداع</button><div id="hist-wrap" class="mt16">${histCard(id, 'صكوك الشركات', p.rate, 0.002)}</div><p class="small mt8">أبيان تختار صكوك الشركات وتشتريها وتديرها نيابةً عنك؛ تشترك في المحفظة فقط.</p>` : `<button class="btn" data-go="/deposit/${id}">${ic('plus')}إيداع</button>
         <div class="hold-card">${p.holdings.map(([n, t, v]) => `<div class="hold"><span class="pct">${v}%</span><span class="nm">${n}</span><span class="tk">${t}</span>${ring(v)}</div>`).join('')}</div>`}
         <div class="kv"><span>درجة المخاطر</span><b>${p.risk}</b></div>
         <div class="plan-cta"><p style="margin:4px 0 14px;font-size:17px">محتار في مبلغ الإيداع؟</p><button class="btn tint" data-go="/income">${ic('target')}ابدأ بخطة مالية</button><p style="margin:14px 0 2px">واحصل على مكافآت 🎁</p></div>
         ${moreSection(pfFaq(p.name))}`;
     },
+    mount: (root) => bindPeriods(root, render),
   });
 
   /* ===== صكوك الشركات: فرص محدودة المدة بعوائد ثابتة وتوزيعات دورية ===== */
