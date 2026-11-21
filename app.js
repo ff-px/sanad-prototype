@@ -1,4 +1,4 @@
-/* سند · نموذج أولي تفاعلي
+/* نموذج أولي تفاعلي
    تطبيق صفحة واحدة بدون مكتبات خارجية — يعمل كموقع ثابت على GitHub Pages.
    كل الأرقام توضيحية. بيانات الحساب والخطة تبقى في المتصفح، وتُرسل فقط إحصاءات استخدام مجهولة إلى PostHog (analytics.js). */
 (() => {
@@ -580,7 +580,7 @@
   /* ================= 1) البداية ================= */
   route('/splash', {
     blue: true, cls: 'splash',
-    view: () => `<div class="splash-logo">${LOGO}<div class="wm"><b>سند</b><span>Sanad</span></div></div><div class="splash-note">مفهوم مقترح لأبيان المالية · نموذج أولي</div>`,
+    view: () => `<div class="splash-logo">${LOGO}</div><div class="splash-note">مفهوم مقترح لأبيان المالية · نموذج أولي</div>`,
     mount: () => later(() => {
       if (!S.user) go('/welcome', { replace: true });
       else if (!unlocked && S.passcode) go('/lock', { replace: true });
@@ -598,7 +598,7 @@
         <circle cx="150" cy="16" r="12" fill="#F2B544"/><text x="150" y="21" text-anchor="middle" font-size="12" font-weight="700" fill="#8A5A00">⁂</text>
         <text x="235" y="182" text-anchor="middle" font-size="12" fill="#6B7383">السيولة</text><text x="150" y="182" text-anchor="middle" font-size="12" fill="#6B7383">الدخل الثابت</text><text x="65" y="182" text-anchor="middle" font-size="12" fill="#6B7383">النمو</text>
       </svg>
-      <h2 class="h2" style="font-size:28px">سند… دخلك الشهري بعد التقاعد</h2>
+      <h2 class="h2" style="font-size:28px">دخلك الشهري بعد التقاعد</h2>
       <p class="sub">نحوّل مكافأة نهاية الخدمة ومدخراتك إلى دفعة شهرية ثابتة، بخطة متوافقة مع الشريعة.</p>
       <ul class="checks">
         <li>${ic('check')}خطة السلال الثلاث: سيولة، دخل ثابت، نمو</li>
@@ -658,7 +658,7 @@
       if (!S.reg) { go('/register', { replace: true }); return null; }
       if (!S.reg.phone) { go('/passcode', { replace: true }); return null; }
       return `${topbar(skipBtn('data-go="/passcode" data-replace="1"'), '', '/register')}
-      <div class="notif" id="notif" role="button" aria-label="تعبئة الرمز"><div class="av">${ic('user')}</div><div style="flex:1"><div class="t">سند <small>الآن</small></div><div class="m">من فضلك استخدم رمز التفعيل التجريبي ${S.reg.code} لتسجيل الدخول</div></div></div>
+      <div class="notif" id="notif" role="button" aria-label="تعبئة الرمز"><div class="av">${ic('user')}</div><div style="flex:1"><div class="t">أبيان <small>الآن</small></div><div class="m">من فضلك استخدم رمز التفعيل التجريبي ${S.reg.code} لتسجيل الدخول</div></div></div>
       <h2 class="q-title" style="margin-top:20px">ادخل رمز التحقق</h2>
       <p class="q-sub" style="margin-bottom:0">تم إرسال الرمز إلى <span dir="ltr">+966xxx${S.reg.phone.slice(-4)}</span></p>
       <div class="otp" id="otp"><b class="cur"></b><b></b><b></b><b></b><input id="otp-in" type="tel" inputmode="numeric" autocomplete="one-time-code" maxlength="4" aria-label="رمز التحقق"/></div>
@@ -1065,7 +1065,7 @@
     ['وش يصير لو انخفض السوق؟', 'سلة السيولة تغطي احتياجك القريب، والصكوك نحتفظ فيها حتى الاستحقاق، ونعيد التوازن دوريًا. الدفعة قد تتغير لكن رأس مالك موزع لتقليل الأثر.'],
     ['أقدر أوقف الدفعات أو أغيّر يومها؟', 'نعم، من تعديل الخطة تقدر توقف الدفعات مؤقتًا، أو تغيّر يومها، أو تخليها يُعاد استثمارها.'],
     ['ليش أوقع إقرار لسلة النمو؟', 'لأن سلة النمو فيها أسهم وصناديق ريت قيمتها تتذبذب، فنتأكد إنك مطّلع على المخاطر قبل رفعها فوق 25%.'],
-    ['هل خطة سند متوافقة مع الشريعة؟', 'كل الأدوات في السلال الثلاث تُعرض على اللجنة الشرعية قبل اعتمادها.'],
+    ['هل خطة التقاعد متوافقة مع الشريعة؟', 'كل الأدوات في السلال الثلاث تُعرض على اللجنة الشرعية قبل اعتمادها.'],
   ];
   function faqBlock(items) {
     return `<div class="faq"><h3>الأسئلة الشائعة</h3>${items.map(([q, a]) => `<details><summary><span>${q}</span>${ic('chevD')}</summary><p>${a}</p></details>`).join('')}</div>`;
@@ -1135,7 +1135,7 @@
     auth: true, nav: 'home',
     view: () => {
       const p = S.plan, u = S.user;
-      const hi = u.name ? 'مرحبًا،' : 'مرحبًا بك في', nm = u.name ? esc(u.name) : 'سند';
+      const hi = u.name ? 'مرحبًا،' : 'مرحبًا بك في', nm = u.name ? esc(u.name) : 'أبيان';
       const head = `<div class="greet"><div><div class="hi">${hi}</div><div class="nm">${nm}</div></div><button class="pill-btn" data-go="/manage">${ic('pencil')}إدارة</button></div>`;
       const guest = u.guest ? `<div class="info-box mb16">${ic('user')}<span>أنت تتصفح كزائر. <button class="link" data-go="/register">أنشئ حسابك</button> عشان تحفظ خطتك.</span></div>` : '';
       if (!p) {
@@ -1322,7 +1322,7 @@
       const bal = portBalance(id);
       const end = `<button class="pill-btn" data-go="/manage">${ic('pencil')}إدارة</button>`;
       if (id === 'trading') {
-        return `${topbar('', end, '/create')}<div class="pf-head">${iconCircle(p, 'lg')}<div><div class="name">التداول</div><span class="small">${p.brand}</span></div></div><div class="pf-hero">تداول الأسهم بنفسك بتجربة سهلة</div><p class="pf-text">هذه الخدمة خارج نطاق النموذج الأولي، والتركيز هنا على خطة سند والمحافظ المُدارة.</p><button class="btn soft" data-go="/create">استعرض المحافظ المُدارة</button>`;
+        return `${topbar('', end, '/create')}<div class="pf-head">${iconCircle(p, 'lg')}<div><div class="name">التداول</div><span class="small">${p.brand}</span></div></div><div class="pf-hero">تداول الأسهم بنفسك بتجربة سهلة</div><p class="pf-text">هذه الخدمة خارج نطاق النموذج الأولي، والتركيز هنا على خطة التقاعد والمحافظ المُدارة.</p><button class="btn soft" data-go="/create">استعرض المحافظ المُدارة</button>`;
       }
       const hero = p.hero || 'تنويع ذكي يناسب مستوى مخاطرك';
       const text = p.text || 'محفظة متنوعة بين الأسهم والصكوك والعقار';
@@ -1518,7 +1518,7 @@
       mount: (sh) => sh.querySelectorAll('[data-pf]').forEach((b) => b.addEventListener('click', () => { S.calc.pf = b.dataset.pf; save(); closeSheet(true); render(); })),
     });
   };
-  ACTIONS.saveTip = () => openSheet({ title: 'ماهي افضل طريقة للادخار؟', html: `<ul class="checks" style="margin:0"><li style="align-items:flex-start">${ic('check')}<span>ابدأ بمبلغ بسيط وفعّل الاستقطاع الشهري عشان يصير الادخار تلقائي.</span></li><li style="align-items:flex-start">${ic('check')}<span>خلّ عندك مبلغ طوارئ يغطي 3 إلى 6 أشهر من مصاريفك.</span></li><li style="align-items:flex-start">${ic('check')}<span>للمتقاعدين: خطة سند توزع مدخراتك وتعطيك دخل شهري.</span></li></ul><button class="btn mt24" data-go="/deposit/saving">ابدأ الادخار</button>` });
+  ACTIONS.saveTip = () => openSheet({ title: 'ماهي افضل طريقة للادخار؟', html: `<ul class="checks" style="margin:0"><li style="align-items:flex-start">${ic('check')}<span>ابدأ بمبلغ بسيط وفعّل الاستقطاع الشهري عشان يصير الادخار تلقائي.</span></li><li style="align-items:flex-start">${ic('check')}<span>خلّ عندك مبلغ طوارئ يغطي 3 إلى 6 أشهر من مصاريفك.</span></li><li style="align-items:flex-start">${ic('check')}<span>للمتقاعدين: خطة التقاعد توزع مدخراتك وتعطيك دخل شهري.</span></li></ul><button class="btn mt24" data-go="/deposit/saving">ابدأ الادخار</button>` });
 
   /* ================= حاسبة الزكاة ================= */
   route('/zakat', {
@@ -1561,7 +1561,7 @@
     },
   });
   ACTIONS.copyCode = async (el) => { try { await navigator.clipboard.writeText(el.dataset.code); toast('تم نسخ الكود'); } catch (e) { toast('الكود: ' + el.dataset.code); } };
-  ACTIONS.shareCode = async (el) => { const text = `سجّل في سند بالكود ${el.dataset.code} واحصل على خصم 20% على الرسوم (نموذج أولي)`; try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); toast('تم نسخ رسالة الدعوة'); } } catch (e) { /* أُلغيت المشاركة */ } };
+  ACTIONS.shareCode = async (el) => { const text = `سجّل في أبيان بالكود ${el.dataset.code} واحصل على خصم 20% على الرسوم (نموذج أولي)`; try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); toast('تم نسخ رسالة الدعوة'); } } catch (e) { /* أُلغيت المشاركة */ } };
   ACTIONS.enterCode = () => openSheet({ title: 'ادخل كود الدعوة', html: `<div class="input"><input id="ic-in" placeholder="مثال: SND-1234" dir="ltr" style="text-align:right"/></div><button class="btn mt16" id="ic-ok">تفعيل</button>`, mount: (sh) => { sh.querySelector('#ic-in').focus(); sh.querySelector('#ic-ok').onclick = () => { closeSheet(); toast('تم تفعيل الكود (تجريبي)'); }; } });
 
   /* ================= الإيداع ================= */
@@ -1665,7 +1665,7 @@
   route('/about', {
     auth: true,
     view: () => `${topbar('عن النموذج الأولي', '', '/settings')}
-      <div class="card"><h3 class="h3">سند</h3><p class="sub">مفهوم مقترح لأبيان المالية ضمن تحدي صُنّاع الحلول: خطة دخل شهري للمتقاعدين، يبنيها مستشار آلي يحاول يوصلك لدخلك المستهدف بحد أقصى ${RISK_CAP}% مخاطر على رأس المال خلال 12 شهر.</p></div>
+      <div class="card"><h3 class="h3">خطة التقاعد</h3><p class="sub">مفهوم مقترح لأبيان المالية ضمن تحدي صُنّاع الحلول: خطة دخل شهري للمتقاعدين، يبنيها مستشار آلي يحاول يوصلك لدخلك المستهدف بحد أقصى ${RISK_CAP}% مخاطر على رأس المال خلال 12 شهر.</p></div>
       <div class="card"><h3 class="h3">الرحلة الأساسية</h3><ul class="checks" style="margin:6px 0 0">
         <li>${ic('check')}<a class="link" data-go="/register">التسجيل</a></li>
         <li>${ic('check')}<a class="link" data-go="/income">إعداد الدخل</a></li>
